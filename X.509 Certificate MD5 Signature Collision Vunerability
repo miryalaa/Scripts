@@ -1,0 +1,88 @@
+The Qualys finding "X.509 certificate MD5 signature collision vulnerability" means the Windows Server (IIS, RDP, LDAP/LDAPS, SQL, etc.) is presenting a certificate signed with the MD5 hashing algorithm.
+
+🔎 Why it’s flagged
+
+MD5 is cryptographically broken (prone to collision attacks).
+
+Attackers can forge a certificate that looks valid to clients.
+
+Modern browsers and clients no longer trust MD5-signed certificates.
+
+✅ How to Fix on Windows Servers
+
+Identify the Affected Certificate
+
+Open MMC → Certificates (Computer Account)
+Navigate to:
+Certificates → Personal → Certificates
+
+Look for the certificate bound to the affected service (IIS, RDP, LDAPS, etc.).
+
+Check its signature algorithm → should say md5RSA.
+
+Or via PowerShell:
+
+Get-ChildItem Cert:\LocalMachine\My | 
+Select-Object Subject, Thumbprint, SignatureAlgorithm, NotAfter
+
+
+Request a New Certificate (with SHA-256 or stronger)
+
+If using an internal CA (AD CS):
+
+Request with SHA-256:
+
+certreq -new request.inf request.req
+
+
+Ensure CA templates are configured to issue SHA-256 by default.
+
+If using a public CA:
+
+Reissue the certificate with SHA-256 (most CAs default to SHA-256 today).
+
+Replace the Old Certificate
+
+For IIS:
+
+Open IIS Manager → Select site → Bindings → Edit HTTPS binding → choose the new cert.
+
+For RDP:
+
+Group Policy:
+Computer Configuration → Administrative Templates → Windows Components → Remote Desktop Services → Remote Desktop Session Host → Security → Server authentication certificate template
+
+For LDAP/LDAPS:
+
+Install the new cert in LocalMachine\My and restart Active Directory Domain Services.
+
+For SQL Server:
+
+Update certificate in SQL Server Configuration Manager → SQL Server Network Configuration → Protocols for <Instance> → Properties → Certificate tab.
+
+Remove the MD5-Signed Certificate
+
+Once the service is bound to the new SHA-256 cert, delete the old one:
+
+Remove-Item -Path Cert:\LocalMachine\My\<Thumbprint>
+
+
+Restart Services
+
+IIS: iisreset
+
+RDP: Restart service or reboot
+
+AD DS / SQL: Restart respective service
+
+🔒 Verification
+
+Re-run a Qualys scan after replacement.
+
+Or manually check:
+
+Get-ChildItem Cert:\LocalMachine\My | 
+Select-Object Subject, SignatureAlgorithm
+
+
+Ensure algorithm is sha256RSA (or stronger).
