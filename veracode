@@ -1,0 +1,57 @@
+🛠️ Remediation Approach
+
+Vendor Acknowledgement:
+
+Vendor confirmed the issue stems from legacy Java applet components and certain CSP (Content Security Policy) configurations used in the web interface.
+
+Full remediation requires redesigning the interface to eliminate Java applet dependencies — planned for future releases.
+
+Interim Mitigation Actions:
+
+Limit application access to internal management networks only.
+
+Disable Java plugin support on client browsers where possible.
+
+Monitor and restrict any external script sources or inline CSP policies.
+
+Ensure web browser and Java runtimes used for access are up-to-date with latest security patches.
+
+Planned Future Action:
+
+Track Vertiv’s release notes for updates that transition away from Java applet-based access or unsafe CSP directives.
+
+Engage Vertiv support to obtain roadmap details for applet removal.
+
+⚖️ Risk Treatment Option
+
+➡️ Risk Treatment: Risk Acceptance (with Compensating Controls)
+
+Justification:
+
+The vulnerability exists due to legacy design (use of Java applets and weak CSP handling).
+
+The issue cannot be remediated by configuration changes or customer-level actions.
+
+The application operates in a restricted, non-internet-facing environment.
+
+Access to the MP1000 interface is limited to authorized users within internal management VLANs.
+
+The likelihood of exploitation is low, as it would require both network access and malicious content injection capabilities.
+
+✅ Risk Acceptance Statement
+
+The “Inclusion of Functionality from Untrusted Control Sphere” vulnerability identified by Veracode on Vertiv MP1000 v3.80.3 results from legacy Java applet dependencies and unsafe CSP directives in the web interface. Vertiv has confirmed this is a known architectural limitation, with plans to address it in a future release.
+
+Since no vendor-supported fix or configuration workaround is currently available, and given the application’s limited internal exposure and the presence of strong access controls, this finding will be accepted as a low-risk item until vendor remediation is available.
+
+Compensating controls implemented:
+
+Restrict application access to trusted internal networks only.
+
+Disable Java plugin execution where not required.
+
+Maintain updated browsers and Java runtime versions.
+
+Periodic vulnerability scanning and configuration review.
+
+Vendor tracking for release updates addressing applet dependency and CSP hardening.
