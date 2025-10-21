@@ -1,6 +1,6 @@
 <#
 Script Name : VMwareTools_Cleanup.ps1
-Purpose     : Uninstall VMware Tools, clean old registry entries, verify cleanup, and reboot
+Purpose     : Uninstall VMware Tools, backup registry, clean old entries, verify, restore if needed, and reboot
 Author      : Anup's Assistant (GPT-5)
 Requires    : Run as Administrator
 #>
@@ -11,7 +11,7 @@ Requires    : Run as Administrator
 
 Write-Host "Checking if VMware Tools is installed..." -ForegroundColor Cyan
 
-# Detect VMware Tools using WMI
+# Detect VMware Tools via WMI
 $vmwareApp = Get-WmiObject -Class Win32_Product -Filter "Name='VMware Tools'" -ErrorAction SilentlyContinue
 
 if ($vmwareApp) {
@@ -111,12 +111,12 @@ if ($foundKeys.Count -eq 0) {
 # Step 4: Verification - Ensure VMware Tools Fully Removed
 # ============================================================
 
-Write-Host "`nVerifying that VMware Tools is completely removed..." -ForegroundColor Cyan
+Write-Host "`nVerifying VMware Tools cleanup..." -ForegroundColor Cyan
 
 # Re-check via WMI
 $vmwareAppCheck = Get-WmiObject -Class Win32_Product -Filter "Name='VMware Tools'" -ErrorAction SilentlyContinue
 
-# Re-check via registry (both 64-bit and 32-bit areas)
+# Re-check registry in both 64-bit and 32-bit locations
 $regPathsToCheck = @(
     "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
     "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall"
@@ -135,25 +135,33 @@ foreach ($rPath in $regPathsToCheck) {
     }
 }
 
-# Display verification results
+# ============================================================
+# Step 5: Handle Verification Results
+# ============================================================
+
 if (-not $vmwareAppCheck -and $vmwareRegistryKeys.Count -eq 0) {
     Write-Host "✅ Verification passed: No VMware Tools installations or registry traces found.`n" -ForegroundColor Green
 } else {
-    Write-Host "⚠️ Verification warning: Some VMware Tools traces still found." -ForegroundColor Yellow
-    if ($vmwareAppCheck) {
-        Write-Host " - VMware Tools still appears in installed programs list."
-    }
-    if ($vmwareRegistryKeys.Count -gt 0) {
-        Write-Host " - Remaining registry keys:"
-        $vmwareRegistryKeys | ForEach-Object { Write-Host "   $_" }
+    Write-Host "⚠️ Verification failed: VMware Tools traces still found. Restoring registry backup..." -ForegroundColor Yellow
+    
+    try {
+        & reg import "$backupFile"
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host "✅ Registry backup restored successfully." -ForegroundColor Green
+        } else {
+            Write-Host "❌ Registry restore failed. Please check manually." -ForegroundColor Red
+        }
+    } catch {
+        Write-Host "❌ Error restoring registry: $($_.Exception.Message)" -ForegroundColor Red
     }
 }
 
 # ============================================================
-# Step 5: Reboot the Server
+# Step 6: Reboot the Server
 # ============================================================
 
 Write-Host "`n⚙️ Preparing to reboot the server in 60 seconds..." -ForegroundColor Cyan
-shutdown /r /t 60 /c "VMware Tools cleanup and verification completed. System will reboot in 60 seconds."
+shutdown /r /t 60 /c "VMware Tools cleanup completed. System will reboot in 60 seconds."
 
 Write-Host "You can cancel the reboot using: shutdown /a" -ForegroundColor Yellow
+
