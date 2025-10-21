@@ -1,0 +1,33 @@
+# PowerShell Script: Find VMware Tools versions below 13.x
+
+# Define the registry path
+$regPath = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"
+
+# Get all subkeys
+$subKeys = Get-ChildItem -Path $regPath
+
+# Loop through each subkey
+foreach ($key in $subKeys) {
+    try {
+        # Get DisplayName and DisplayVersion values
+        $displayName = (Get-ItemProperty -Path $key.PSPath -ErrorAction Stop).DisplayName
+        $displayVersion = (Get-ItemProperty -Path $key.PSPath -ErrorAction Stop).DisplayVersion
+
+        # Check if the software is VMware Tools and version is below 13.x
+        if ($displayName -eq "VMware Tools" -and $displayVersion) {
+            # Extract the major version number
+            $majorVersion = [int]($displayVersion.Split('.')[0])
+
+            if ($majorVersion -lt 13) {
+                Write-Host "Path: $($key.PSPath)"
+                Write-Host "DisplayName: $displayName"
+                Write-Host "DisplayVersion: $displayVersion"
+                Write-Host "--------------------------------------------"
+            }
+        }
+    }
+    catch {
+        # Ignore subkeys that don't have DisplayName/DisplayVersion
+        continue
+    }
+}
