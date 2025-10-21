@@ -1,4 +1,4 @@
-# PowerShell Script: Backup Uninstall Registry + Find VMware Tools versions below 13.x
+# PowerShell Script: Backup + Detect + Delete Old VMware Tools Registry Entries
 
 # Define registry path and backup directory
 $regPath = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"
@@ -10,20 +10,21 @@ if (-not (Test-Path -Path $backupDir)) {
     New-Item -Path $backupDir -ItemType Directory -Force | Out-Null
 }
 
-# Backup the registry key to .reg file
+# Step 1: Backup the registry key
 Write-Host "Backing up registry path to $backupFile..."
 & reg export "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall" "$backupFile" /y
 if ($LASTEXITCODE -eq 0) {
-    Write-Host "Registry backup completed successfully.`n"
+    Write-Host "✅ Registry backup completed successfully.`n"
 } else {
-    Write-Host "Failed to export registry key.`n"
+    Write-Host "❌ Failed to export registry key. Aborting deletion for safety."
+    exit
 }
 
-# Now search for VMware Tools versions below 13.x
+# Step 2: Scan for VMware Tools below version 13.x
 Write-Host "Scanning for VMware Tools installations below version 13.x...`n"
 
-# Get all subkeys
 $subKeys = Get-ChildItem -Path $regPath -ErrorAction SilentlyContinue
+$foundKeys = @()
 
 foreach ($key in $subKeys) {
     try {
@@ -31,17 +32,38 @@ foreach ($key in $subKeys) {
         $displayName = $props.DisplayName
         $displayVersion = $props.DisplayVersion
 
-        # Check for VMware Tools
         if ($displayName -eq "VMware Tools" -and $displayVersion) {
             $majorVersion = [int]($displayVersion.Split('.')[0])
             if ($majorVersion -lt 13) {
-                Write-Host "Path: $($key.PSPath)"
-                Write-Host "DisplayName: $displayName"
+                Write-Host "🟡 Found: $($key.PSPath)"
                 Write-Host "DisplayVersion: $displayVersion"
                 Write-Host "--------------------------------------------"
+                $foundKeys += $key.PSPath
             }
         }
-    } catch {
-        continue
+    } catch {}
+}
+
+if ($foundKeys.Count -eq 0) {
+    Write-Host "✅ No VMware Tools entries below version 13.x found."
+    exit
+}
+
+# Step 3: Confirm and delete old VMware Tools entries
+Write-Host "`nThe following keys will be deleted:"
+$foundKeys | ForEach-Object { Write-Host " - $_" }
+
+$confirmation = Read-Host "`nDo you want to proceed with deletion? (Y/N)"
+if ($confirmation -match '^[Yy]$') {
+    foreach ($path in $foundKeys) {
+        try {
+            Remove-Item -Path $path -Recurse -Force -ErrorAction Stop
+            Write-Host "🗑️ Deleted: $path"
+        } catch {
+            Write-Host "❌ Failed to delete: $path - $($_.Exception.Message)"
+        }
     }
+    Write-Host "`n✅ Deletion process completed."
+} else {
+    Write-Host "`nOperation cancelled. No registry entries were deleted."
 }
