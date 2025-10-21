@@ -1,23 +1,39 @@
-# PowerShell Script: Find VMware Tools versions below 13.x
+# PowerShell Script: Backup Uninstall Registry + Find VMware Tools versions below 13.x
 
-# Define the registry path
+# Define registry path and backup directory
 $regPath = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"
+$backupDir = "C:\OS"
+$backupFile = Join-Path $backupDir "Uninstall_Backup.reg"
+
+# Ensure backup directory exists
+if (-not (Test-Path -Path $backupDir)) {
+    New-Item -Path $backupDir -ItemType Directory -Force | Out-Null
+}
+
+# Backup the registry key to .reg file
+Write-Host "Backing up registry path to $backupFile..."
+& reg export "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall" "$backupFile" /y
+if ($LASTEXITCODE -eq 0) {
+    Write-Host "Registry backup completed successfully.`n"
+} else {
+    Write-Host "Failed to export registry key.`n"
+}
+
+# Now search for VMware Tools versions below 13.x
+Write-Host "Scanning for VMware Tools installations below version 13.x...`n"
 
 # Get all subkeys
-$subKeys = Get-ChildItem -Path $regPath
+$subKeys = Get-ChildItem -Path $regPath -ErrorAction SilentlyContinue
 
-# Loop through each subkey
 foreach ($key in $subKeys) {
     try {
-        # Get DisplayName and DisplayVersion values
-        $displayName = (Get-ItemProperty -Path $key.PSPath -ErrorAction Stop).DisplayName
-        $displayVersion = (Get-ItemProperty -Path $key.PSPath -ErrorAction Stop).DisplayVersion
+        $props = Get-ItemProperty -Path $key.PSPath -ErrorAction Stop
+        $displayName = $props.DisplayName
+        $displayVersion = $props.DisplayVersion
 
-        # Check if the software is VMware Tools and version is below 13.x
+        # Check for VMware Tools
         if ($displayName -eq "VMware Tools" -and $displayVersion) {
-            # Extract the major version number
             $majorVersion = [int]($displayVersion.Split('.')[0])
-
             if ($majorVersion -lt 13) {
                 Write-Host "Path: $($key.PSPath)"
                 Write-Host "DisplayName: $displayName"
@@ -25,9 +41,7 @@ foreach ($key in $subKeys) {
                 Write-Host "--------------------------------------------"
             }
         }
-    }
-    catch {
-        # Ignore subkeys that don't have DisplayName/DisplayVersion
+    } catch {
         continue
     }
 }
