@@ -1,27 +1,60 @@
-# PowerShell Script: Backup + Detect + Delete Old VMware Tools Registry Entries
+# PowerShell Script: Uninstall VMware Tools + Backup Registry + Cleanup Old Entries
 
-# Define registry path and backup directory
+# ============================================================
+# Step 0: Check and Uninstall VMware Tools (any version)
+# ============================================================
+
+Write-Host "Checking if VMware Tools is installed..." -ForegroundColor Cyan
+
+# Try both registry and WMI for detection
+$vmwareApp = Get-WmiObject -Class Win32_Product -Filter "Name='VMware Tools'" -ErrorAction SilentlyContinue
+
+if ($vmwareApp) {
+    Write-Host "🟡 VMware Tools detected. Version: $($vmwareApp.Version)"
+    Write-Host "Attempting to uninstall VMware Tools..."
+
+    try {
+        # Uninstall via WMI
+        $result = $vmwareApp.Uninstall()
+        if ($result.ReturnValue -eq 0) {
+            Write-Host "✅ VMware Tools uninstalled successfully.`n"
+        } else {
+            Write-Host "⚠️ VMware Tools uninstall returned code: $($result.ReturnValue)"
+        }
+    } catch {
+        Write-Host "❌ Error during VMware Tools uninstall: $($_.Exception.Message)"
+    }
+} else {
+    Write-Host "✅ VMware Tools not found — continuing to registry backup.`n"
+}
+
+# ============================================================
+# Step 1: Backup Uninstall Registry Path
+# ============================================================
+
 $regPath = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"
 $backupDir = "C:\OS"
 $backupFile = Join-Path $backupDir "Uninstall_Backup.reg"
 
-# Ensure backup directory exists
 if (-not (Test-Path -Path $backupDir)) {
     New-Item -Path $backupDir -ItemType Directory -Force | Out-Null
 }
 
-# Step 1: Backup the registry key
-Write-Host "Backing up registry path to $backupFile..."
+Write-Host "Backing up registry path to $backupFile..." -ForegroundColor Cyan
 & reg export "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall" "$backupFile" /y
+
 if ($LASTEXITCODE -eq 0) {
     Write-Host "✅ Registry backup completed successfully.`n"
 } else {
-    Write-Host "❌ Failed to export registry key. Aborting deletion for safety."
+    Write-Host "❌ Registry export failed. Aborting for safety."
     exit
 }
 
-# Step 2: Scan for VMware Tools below version 13.x
-Write-Host "Scanning for VMware Tools installations below version 13.x...`n"
+# ============================================================
+# Step 2: Find VMware Tools Entries Below Version 13.x
+# ============================================================
+
+Write-Host "Scanning for VMware Tools entries below version 13.x...`n" -ForegroundColor Cyan
 
 $subKeys = Get-ChildItem -Path $regPath -ErrorAction SilentlyContinue
 $foundKeys = @()
@@ -45,12 +78,15 @@ foreach ($key in $subKeys) {
 }
 
 if ($foundKeys.Count -eq 0) {
-    Write-Host "✅ No VMware Tools entries below version 13.x found."
+    Write-Host "✅ No VMware Tools entries below version 13.x found.`n"
     exit
 }
 
-# Step 3: Confirm and delete old VMware Tools entries
-Write-Host "`nThe following keys will be deleted:"
+# ============================================================
+# Step 3: Confirm and Delete Old VMware Tools Entries
+# ============================================================
+
+Write-Host "`nThe following registry subkeys will be deleted:" -ForegroundColor Yellow
 $foundKeys | ForEach-Object { Write-Host " - $_" }
 
 $confirmation = Read-Host "`nDo you want to proceed with deletion? (Y/N)"
