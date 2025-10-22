@@ -1,8 +1,8 @@
 <#
 Script Name : VMwareTools_1305_Cleanup.ps1
 Purpose     : Verify VMware Tools version 13.0.5 installed. 
-              If not, reboot. If yes, clean old registry entries below 13.0.5, verify, restore if needed, and reboot.
-Author      : Anup Kumar Miryala
+              If not, reboot. If yes, clean registry entries below 13.0.5, verify installed version, and reboot.
+Author      : Anup's Assistant (GPT-5)
 Requires    : Run as Administrator
 #>
 
@@ -17,8 +17,16 @@ $vmwareTools = Get-ItemProperty `
     -ErrorAction SilentlyContinue | 
     Where-Object { $_.DisplayName -eq "VMware Tools" }
 
+function Compare-Version ($v1, $v2) {
+    [version]$ver1 = $v1
+    [version]$ver2 = $v2
+    return $ver1.CompareTo($ver2)
+}
+
+$targetVersion = "13.0.5"
+
 if (-not $vmwareTools) {
-    Write-Host "⚠️ VMware Tools not found. System reboot required." -ForegroundColor Yellow
+    Write-Host "❌ VMware Tools not found. System reboot required." -ForegroundColor Red
     shutdown /r /t 60 /c "VMware Tools not detected. System will reboot in 60 seconds."
     Write-Host "You can cancel reboot using: shutdown /a"
     exit
@@ -27,25 +35,17 @@ if (-not $vmwareTools) {
 $installedVersion = $vmwareTools.DisplayVersion
 Write-Host "🟡 VMware Tools detected - Installed Version: $installedVersion"
 
-# Compare versions properly
-function Compare-Version ($v1, $v2) {
-    [version]$ver1 = $v1
-    [version]$ver2 = $v2
-    return $ver1.CompareTo($ver2)
-}
-
-$targetVersion = "13.0.5"
 $versionCheck = Compare-Version $installedVersion $targetVersion
 
 if ($versionCheck -ne 0) {
-    Write-Host "⚠️ VMware Tools $targetVersion not found. Installed version is $installedVersion." -ForegroundColor Yellow
-    Write-Host "Rebooting system as VMware Tools 13.0.5 is not installed..."
-    shutdown /r /t 60 /c "VMware Tools 13.0.5 not detected. System will reboot in 60 seconds."
+    Write-Host "⚠️ VMware Tools $targetVersion not installed. Current version is $installedVersion." -ForegroundColor Yellow
+    Write-Host "Rebooting system for compliance..." -ForegroundColor Cyan
+    shutdown /r /t 60 /c "VMware Tools 13.0.5 not installed. System will reboot in 60 seconds."
     Write-Host "You can cancel reboot using: shutdown /a"
     exit
 }
 
-Write-Host "✅ VMware Tools 13.0.5 is installed. Proceeding with cleanup of older registry entries.`n"
+Write-Host "✅ VMware Tools $targetVersion is installed. Proceeding with registry cleanup of older entries.`n"
 
 # ============================================================
 # Step 2: Backup Registry
@@ -97,10 +97,6 @@ foreach ($key in $subKeys) {
 if ($oldKeys.Count -eq 0) {
     Write-Host "✅ No older VMware Tools registry entries found.`n"
 } else {
-    # ============================================================
-    # Step 4: Delete Older Entries
-    # ============================================================
-
     Write-Host "`nDeleting registry entries below version $targetVersion..." -ForegroundColor Yellow
     foreach ($path in $oldKeys) {
         try {
@@ -113,23 +109,31 @@ if ($oldKeys.Count -eq 0) {
 }
 
 # ============================================================
-# Step 5: Verification
+# Step 4: Verification - Check Installed VMware Tools Version
 # ============================================================
 
-Write-Host "`nVerifying VMware Tools registry cleanup..." -ForegroundColor Cyan
+Write-Host "`nVerifying VMware Tools installation version..." -ForegroundColor Cyan
 
-$remainingKeys = Get-ChildItem -Path $regPath -ErrorAction SilentlyContinue | Where-Object {
-    try {
-        $props = Get-ItemProperty -Path $_.PSPath -ErrorAction Stop
-        ($props.DisplayName -eq "VMware Tools") -and
-        (Compare-Version $props.DisplayVersion $targetVersion -lt 0)
-    } catch { $false }
-}
+# Check again via registry
+$vmwareCheck = Get-ItemProperty `
+    "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*" `
+    -ErrorAction SilentlyContinue | 
+    Where-Object { $_.DisplayName -eq "VMware Tools" }
 
-if ($remainingKeys.Count -eq 0) {
-    Write-Host "✅ Verification successful. No VMware Tools entries below version $targetVersion exist.`n" -ForegroundColor Green
+if ($vmwareCheck) {
+    $currentVersion = $vmwareCheck.DisplayVersion
+    $compareResult = Compare-Version $currentVersion $targetVersion
+
+    if ($compareResult -eq 0) {
+        Write-Host "✅ Verification Passed: VMware Tools $currentVersion is correctly installed." -ForegroundColor Green
+    } elseif ($compareResult -lt 0) {
+        Write-Host "⚠️ Verification Warning: VMware Tools version is older ($currentVersion). Consider upgrade to $targetVersion." -ForegroundColor Yellow
+    } else {
+        Write-Host "ℹ️ VMware Tools version $currentVersion detected (newer than $targetVersion)." -ForegroundColor Cyan
+    }
 } else {
-    Write-Host "⚠️ Some VMware Tools registry entries below version $targetVersion still exist. Restoring registry backup..." -ForegroundColor Yellow
+    Write-Host "❌ VMware Tools not found after cleanup. Possible uninstall or corruption." -ForegroundColor Red
+    Write-Host "Restoring registry backup..." -ForegroundColor Yellow
     & reg import "$backupFile"
     if ($LASTEXITCODE -eq 0) {
         Write-Host "✅ Registry backup restored successfully." -ForegroundColor Green
@@ -139,10 +143,9 @@ if ($remainingKeys.Count -eq 0) {
 }
 
 # ============================================================
-# Step 6: Reboot
+# Step 5: Reboot
 # ============================================================
 
 Write-Host "`n⚙️ Cleanup complete. System will reboot in 60 seconds..." -ForegroundColor Cyan
-shutdown /r /t 60 /c "VMware Tools cleanup completed successfully. System rebooting in 60 seconds."
+shutdown /r /t 60 /c "VMware Tools cleanup and verification completed successfully. System rebooting in 60 seconds."
 Write-Host "You can cancel reboot using: shutdown /a" -ForegroundColor Yellow
-
