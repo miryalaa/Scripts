@@ -1,0 +1,20 @@
+Justification for UDP Port Connectivity Between MP1000 and ACS 8000
+
+The Vertiv Avocent MP1000 Power Management Appliance requires network communication with the Avocent ACS 8000 Console Server for device management, discovery, and IP configuration functions. The following UDP ports are essential for these operations:
+
+UDP 67 / 68 (DHCP Client/Server Communication):
+These ports are used for Dynamic Host Configuration Protocol (DHCP) communication between the MP1000 and ACS 8000. The MP1000 uses DHCP to automatically obtain IP configuration details (IP address, subnet mask, gateway) when initializing or reconnecting to the network. This ensures consistent IP addressing and management connectivity in dynamic environments.
+
+UDP 546 (DHCPv6 Client):
+Required when IPv6 addressing is enabled. The MP1000 acts as a DHCPv6 client, communicating with the ACS 8000 or the DHCP server for IPv6 address assignment and configuration parameters.
+
+UDP 3211 (Vertiv/Avocent Proprietary Communication Port):
+This port is used by the Avocent ACS 8000 for device discovery, monitoring, and configuration synchronization with connected MP1000 units. It allows secure management communication and integration between the console server and the managed power devices.
+
+Summary
+
+These ports enable automatic IP provisioning, configuration management, and communication between the MP1000 and ACS 8000 systems, ensuring reliable network-based power control and serial console management.
+
+
+----------------------------------------------------------------------------------------------------------------------------------
+
