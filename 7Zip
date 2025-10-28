@@ -7,23 +7,21 @@ $InstallPath     = "C:\OS"
 $InstallerName   = "7z2501-x64.exe"
 $InstallerPath   = Join-Path $InstallPath $InstallerName
 
-# Function to check installed version of 7-Zip
+# Function to get installed 7-Zip version
 function Get-7ZipVersion {
-    try {
-        $key = "HKLM:\SOFTWARE\7-Zip"
-        if (Test-Path $key) {
-            $version = (Get-ItemProperty -Path $key).Path | Split-Path -Leaf
-            return $version
-        } else {
-            $key = "HKLM:\SOFTWARE\WOW6432Node\7-Zip"
-            if (Test-Path $key) {
-                $version = (Get-ItemProperty -Path $key).Path | Split-Path -Leaf
-                return $version
-            }
+    $paths = @(
+        "HKLM:\SOFTWARE\7-Zip",
+        "HKLM:\SOFTWARE\WOW6432Node\7-Zip"
+    )
+    foreach ($path in $paths) {
+        if (Test-Path $path) {
+            try {
+                $version = (Get-ItemProperty -Path $path -ErrorAction Stop).Version
+                if ($version) { return $version }
+            } catch { }
         }
-    } catch {
-        return $null
     }
+    return $null
 }
 
 # Check if 7-Zip is already installed
@@ -32,8 +30,10 @@ $currentVersion = Get-7ZipVersion
 if ($currentVersion -eq $SevenZipVersion) {
     Write-Host "7-Zip version $SevenZipVersion is already installed. Exiting..."
     exit 0
+} elseif ($currentVersion) {
+    Write-Host "Detected 7-Zip version $currentVersion, expected $SevenZipVersion. Proceeding with upgrade..."
 } else {
-    Write-Host "7-Zip version $SevenZipVersion not found. Proceeding with installation..."
+    Write-Host "7-Zip not found. Proceeding with fresh installation..."
 }
 
 # Ensure the C:\OS directory exists
@@ -60,9 +60,9 @@ Start-Process -FilePath $InstallerPath -ArgumentList "/S" -Wait
 $installedVersion = Get-7ZipVersion
 
 if ($installedVersion -eq $SevenZipVersion) {
-    Write-Host "7-Zip version $SevenZipVersion installed successfully."
+    Write-Host "✅ 7-Zip version $SevenZipVersion installed successfully."
 } else {
-    Write-Host "Error: 7-Zip installation failed or version mismatch."
+    Write-Host "⚠️ 7-Zip installation failed or version mismatch. Detected version: $installedVersion"
 }
 
 # Cleanup: delete installer and binaries
@@ -76,3 +76,4 @@ try {
 
 Write-Host "Process completed."
 exit 0
+
