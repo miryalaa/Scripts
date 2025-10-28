@@ -10,19 +10,31 @@ $InstallerPath   = Join-Path $InstallPath $InstallerName
 
 # Function: Get installed 7-Zip details (DisplayName, DisplayVersion, UninstallString)
 function Get-7ZipInstallInfo {
-    $paths = @(
-        "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*",
-        "HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*"
+    $regPaths = @(
+        "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall",
+        "HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall"
     )
 
-    foreach ($path in $paths) {
-        $apps = Get-ItemProperty $path -ErrorAction SilentlyContinue |
-            Where-Object { $_.DisplayName -like "7-Zip*" } |
-            Select-Object DisplayName, DisplayVersion, UninstallString
+    $results = @()
 
-        if ($apps) { return $apps }
+    foreach ($path in $regPaths) {
+        try {
+            $keys = Get-ChildItem -Path $path -ErrorAction SilentlyContinue
+            foreach ($key in $keys) {
+                $props = Get-ItemProperty -Path $key.PSPath -ErrorAction SilentlyContinue
+                if ($props.DisplayName -like "7-Zip*") {
+                    $results += [PSCustomObject]@{
+                        DisplayName     = $props.DisplayName
+                        DisplayVersion  = $props.DisplayVersion
+                        UninstallString = $props.UninstallString
+                        RegistryPath    = $key.PSPath
+                    }
+                }
+            }
+        } catch {}
     }
-    return $null
+
+    if ($results) { return $results } else { return $null }
 }
 
 # Step 1: Check if 7-Zip is installed
