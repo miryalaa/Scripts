@@ -8,8 +8,8 @@ $InstallPath     = "C:\OS"
 $InstallerName   = "7z2501-x64.exe"
 $InstallerPath   = Join-Path $InstallPath $InstallerName
 
-# Function: Check if 7-Zip version is installed via registry uninstall entries
-function Test-7ZipInstalled {
+# Function: Get installed 7-Zip details (DisplayName, DisplayVersion, UninstallString)
+function Get-7ZipInstallInfo {
     $paths = @(
         "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*",
         "HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*"
@@ -18,35 +18,51 @@ function Test-7ZipInstalled {
     foreach ($path in $paths) {
         $apps = Get-ItemProperty $path -ErrorAction SilentlyContinue |
             Where-Object { $_.DisplayName -like "7-Zip*" } |
-            Select-Object DisplayName, DisplayVersion
+            Select-Object DisplayName, DisplayVersion, UninstallString
 
-        foreach ($app in $apps) {
-            if ($app.DisplayVersion -eq $SevenZipVersion) {
-                return $true
+        if ($apps) { return $apps }
+    }
+    return $null
+}
+
+# Step 1: Check if 7-Zip is installed
+Write-Host "Checking if 7-Zip is installed..."
+$installedApps = Get-7ZipInstallInfo
+
+if ($installedApps) {
+    foreach ($app in $installedApps) {
+        Write-Host "Detected: $($app.DisplayName) version $($app.DisplayVersion)"
+        if ($app.DisplayVersion -eq $SevenZipVersion) {
+            Write-Host "✅ 7-Zip version $SevenZipVersion is already installed. Exiting..."
+            exit 0
+        } else {
+            Write-Host "⚙️ Older version ($($app.DisplayVersion)) detected. Uninstalling before upgrade..."
+            if ($app.UninstallString) {
+                try {
+                    # Some uninstall strings include "msiexec /I"; replace with /x for silent uninstall
+                    $uninstallCmd = $app.UninstallString.Replace("/I", "/x") + " /quiet /norestart"
+                    Write-Host "Running: $uninstallCmd"
+                    Start-Process -FilePath "cmd.exe" -ArgumentList "/c $uninstallCmd" -Wait
+                    Write-Host "Uninstallation completed."
+                } catch {
+                    Write-Host "❌ Failed to uninstall existing 7-Zip. $_"
+                }
+            } else {
+                Write-Host "⚠️ No uninstall command found for older 7-Zip version."
             }
         }
     }
-    return $false
-}
-
-# Step 1: Check if 7-Zip is already installed
-Write-Host "Checking if 7-Zip version $SevenZipVersion is installed..."
-$installed = Test-7ZipInstalled
-
-if ($installed) {
-    Write-Host "✅ 7-Zip version $SevenZipVersion is already installed. Exiting..."
-    exit 0
 } else {
-    Write-Host "7-Zip version $SevenZipVersion not found. Proceeding with installation..."
+    Write-Host "No previous 7-Zip installation found."
 }
 
-# Step 2: Ensure the C:\OS directory exists
+# Step 2: Ensure C:\OS exists
 if (-not (Test-Path $InstallPath)) {
     New-Item -ItemType Directory -Path $InstallPath -Force | Out-Null
 }
 
-# Step 3: Download the installer from Artifactory
-Write-Host "Downloading 7-Zip installer from Artifactory..."
+# Step 3: Download installer from Artifactory
+Write-Host "Downloading 7-Zip version $SevenZipVersion installer from Artifactory..."
 Invoke-WebRequest -Uri $ArtifactoryURL -OutFile $InstallerPath -UseBasicParsing
 
 if (Test-Path $InstallerPath) {
@@ -56,23 +72,31 @@ if (Test-Path $InstallerPath) {
     exit 1
 }
 
-# Step 4: Run the installer silently
-Write-Host "Running 7-Zip silent installation..."
+# Step 4: Install new 7-Zip version silently
+Write-Host "Installing 7-Zip version $SevenZipVersion..."
 Start-Process -FilePath $InstallerPath -ArgumentList "/S" -Wait
 
 # Step 5: Verify installation
 Write-Host "Verifying installation..."
 Start-Sleep -Seconds 5
-$installed = Test-7ZipInstalled
+$newInstall = Get-7ZipInstallInfo
+$found = $false
 
-if ($installed) {
-    Write-Host "✅ 7-Zip version $SevenZipVersion installed successfully."
-} else {
+if ($newInstall) {
+    foreach ($app in $newInstall) {
+        if ($app.DisplayVersion -eq $SevenZipVersion) {
+            Write-Host "✅ 7-Zip version $SevenZipVersion installed successfully."
+            $found = $true
+        }
+    }
+}
+
+if (-not $found) {
     Write-Host "❌ Error: 7-Zip installation failed or version mismatch."
 }
 
-# Step 6: Cleanup — delete installer binaries
-Write-Host "Cleaning up installer files in $InstallPath ..."
+# Step 6: Cleanup
+Write-Host "Cleaning up installer files in $InstallPath..."
 try {
     Get-ChildItem -Path $InstallPath -Filter "*.exe" -File | ForEach-Object {
         Remove-Item $_.FullName -Force -ErrorAction SilentlyContinue
