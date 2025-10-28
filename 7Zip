@@ -3,29 +3,33 @@
 
 # Define variables
 $SevenZipVersion = "25.01"
-$SevenZipName    = "7-Zip"
 $ArtifactoryURL  = "https://your-artifactory.company.com/path/to/7z2501-x64.exe"
 $InstallPath     = "C:\OS"
 $InstallerName   = "7z2501-x64.exe"
 $InstallerPath   = Join-Path $InstallPath $InstallerName
 
-# Function to check if 7-Zip is installed
+# Function: Check if 7-Zip version is installed via registry uninstall entries
 function Test-7ZipInstalled {
-    $apps = Get-WmiObject -Class Win32_Product -Filter "Name LIKE '%7-Zip%'" -ErrorAction SilentlyContinue
-    if (-not $apps) {
-        # If Win32_Product fails (can be slow), fallback to registry query through CIM
-        $apps = Get-CimInstance Win32_Product -Filter "Name LIKE '%7-Zip%'" -ErrorAction SilentlyContinue
-    }
+    $paths = @(
+        "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*",
+        "HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*"
+    )
 
-    foreach ($app in $apps) {
-        if ($app.Name -like "*7-Zip*" -and $app.Version -eq $SevenZipVersion) {
-            return $true
+    foreach ($path in $paths) {
+        $apps = Get-ItemProperty $path -ErrorAction SilentlyContinue |
+            Where-Object { $_.DisplayName -like "7-Zip*" } |
+            Select-Object DisplayName, DisplayVersion
+
+        foreach ($app in $apps) {
+            if ($app.DisplayVersion -eq $SevenZipVersion) {
+                return $true
+            }
         }
     }
     return $false
 }
 
-# Check if 7-Zip is already installed
+# Step 1: Check if 7-Zip is already installed
 Write-Host "Checking if 7-Zip version $SevenZipVersion is installed..."
 $installed = Test-7ZipInstalled
 
@@ -36,27 +40,27 @@ if ($installed) {
     Write-Host "7-Zip version $SevenZipVersion not found. Proceeding with installation..."
 }
 
-# Ensure the C:\OS directory exists
+# Step 2: Ensure the C:\OS directory exists
 if (-not (Test-Path $InstallPath)) {
     New-Item -ItemType Directory -Path $InstallPath -Force | Out-Null
 }
 
-# Download the installer from Artifactory
+# Step 3: Download the installer from Artifactory
 Write-Host "Downloading 7-Zip installer from Artifactory..."
 Invoke-WebRequest -Uri $ArtifactoryURL -OutFile $InstallerPath -UseBasicParsing
 
 if (Test-Path $InstallerPath) {
-    Write-Host "Installer downloaded successfully to $InstallerPath"
+    Write-Host "✅ Installer downloaded successfully to $InstallerPath"
 } else {
     Write-Host "❌ Error: Failed to download installer."
     exit 1
 }
 
-# Install 7-Zip silently
+# Step 4: Run the installer silently
 Write-Host "Running 7-Zip silent installation..."
 Start-Process -FilePath $InstallerPath -ArgumentList "/S" -Wait
 
-# Re-check installation status
+# Step 5: Verify installation
 Write-Host "Verifying installation..."
 Start-Sleep -Seconds 5
 $installed = Test-7ZipInstalled
@@ -67,7 +71,7 @@ if ($installed) {
     Write-Host "❌ Error: 7-Zip installation failed or version mismatch."
 }
 
-# Cleanup — delete installer binaries
+# Step 6: Cleanup — delete installer binaries
 Write-Host "Cleaning up installer files in $InstallPath ..."
 try {
     Get-ChildItem -Path $InstallPath -Filter "*.exe" -File | ForEach-Object {
