@@ -1,0 +1,76 @@
+# Define Variables
+$SevenZipVersion = "25.01"
+$ArtifactoryURL  = "https://your-artifactory.company.com/path/to/7z2501-x64.exe"
+$InstallPath     = "C:\OS"
+$InstallerName   = "7z2501-x64.exe"
+$InstallerPath   = Join-Path $InstallPath $InstallerName
+
+# Function to check installed version of 7-Zip
+function Get-7ZipVersion {
+    try {
+        $key = "HKLM:\SOFTWARE\7-Zip"
+        if (Test-Path $key) {
+            $version = (Get-ItemProperty -Path $key).Path | Split-Path -Leaf
+            return $version
+        } else {
+            $key = "HKLM:\SOFTWARE\WOW6432Node\7-Zip"
+            if (Test-Path $key) {
+                $version = (Get-ItemProperty -Path $key).Path | Split-Path -Leaf
+                return $version
+            }
+        }
+    } catch {
+        return $null
+    }
+}
+
+# Check if 7-Zip is already installed
+$currentVersion = Get-7ZipVersion
+
+if ($currentVersion -eq $SevenZipVersion) {
+    Write-Host "7-Zip version $SevenZipVersion is already installed. Exiting..."
+    exit 0
+} else {
+    Write-Host "7-Zip version $SevenZipVersion not found. Proceeding with installation..."
+}
+
+# Ensure the C:\OS directory exists
+if (-not (Test-Path $InstallPath)) {
+    New-Item -ItemType Directory -Path $InstallPath -Force | Out-Null
+}
+
+# Download the installer from Artifactory
+Write-Host "Downloading 7-Zip installer from Artifactory..."
+Invoke-WebRequest -Uri $ArtifactoryURL -OutFile $InstallerPath -UseBasicParsing
+
+if (Test-Path $InstallerPath) {
+    Write-Host "Installer downloaded successfully to $InstallerPath"
+} else {
+    Write-Host "Error: Failed to download installer."
+    exit 1
+}
+
+# Install 7-Zip silently
+Write-Host "Running 7-Zip silent installation..."
+Start-Process -FilePath $InstallerPath -ArgumentList "/S" -Wait
+
+# Verify installation
+$installedVersion = Get-7ZipVersion
+
+if ($installedVersion -eq $SevenZipVersion) {
+    Write-Host "7-Zip version $SevenZipVersion installed successfully."
+} else {
+    Write-Host "Error: 7-Zip installation failed or version mismatch."
+}
+
+# Cleanup: delete installer and binaries
+Write-Host "Cleaning up installation files..."
+try {
+    Remove-Item -Path $InstallerPath -Force -ErrorAction Stop
+    Write-Host "Deleted installer: $InstallerPath"
+} catch {
+    Write-Host "Warning: Could not delete installer file. $_"
+}
+
+Write-Host "Process completed."
+exit 0
