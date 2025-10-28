@@ -1,3 +1,5 @@
+#cmd.exe /c powershell.exe -ExecutionPolicy Bypass -NoProfile -Command "& { Start-Process PowerShell -ArgumentList '-ExecutionPolicy Bypass -NoProfile -File ""%CD%\__Download\install.ps1""' -Verb RunAs }"
+
 # Define Variables
 $SevenZipVersion = "25.01"
 $ArtifactoryURL  = "https://your-artifactory.company.com/path/to/7z2501-x64.exe"
