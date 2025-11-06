@@ -1,0 +1,17 @@
+Business Justification:
+
+Networker is the company-approved enterprise backup solution used across all data centers and server environments to ensure system resilience, data protection, and compliance with corporate IT and security policies. As part of the standard software stack, Networker is installed on all servers to provide centralized, automated backup and restore capabilities.
+
+Firewall ports are required to be opened between the branch office servers (Houston and Dublin) and the designated Networker backup infrastructure located in the Ashburn and Hillsboro data centers. These connections enable essential backup and recovery operations, such as data transfer, job scheduling, backup validation, and monitoring.
+
+Enabling these ports is critical to:
+
+Ensure business continuity through regular system and data backups.
+
+Meet corporate and regulatory compliance requirements for data retention and disaster recovery.
+
+Allow centralized backup management and reporting under the enterprise backup strategy.
+
+Maintain consistency with the existing approved configuration used in primary data centers.
+
+Without these firewall permissions, the servers at branch offices would remain outside the enterprise backup framework, creating data loss risks, non-compliance with IT policies, and potential business disruption in the event of system failures.
