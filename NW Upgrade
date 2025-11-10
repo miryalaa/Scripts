@@ -1,0 +1,47 @@
+# Define variables
+$installerPath = "C:\Installers\Networker\nsrclient-19.9.0-x64.msi"   # Path to your desired installer
+$desiredVersion = "19.9.0.0"  # Target version
+$packageName = "EMC NetWorker Client"
+
+Write-Host "Checking installed NetWorker Client version..." -ForegroundColor Cyan
+
+# Function to get installed NetWorker version
+function Get-NetworkerVersion {
+    $app = Get-WmiObject -Class Win32_Product | Where-Object { $_.Name -like "*NetWorker*" }
+    if ($app) {
+        return $app.Version
+    } else {
+        return $null
+    }
+}
+
+# Get current installed version
+$currentVersion = Get-NetworkerVersion
+
+if ($null -eq $currentVersion) {
+    Write-Host "NetWorker Client not found. Installing version $desiredVersion..." -ForegroundColor Yellow
+    Start-Process "msiexec.exe" -ArgumentList "/i `"$installerPath`" /qn /norestart" -Wait
+}
+else {
+    Write-Host "Current NetWorker version: $currentVersion" -ForegroundColor Green
+
+    # Compare versions
+    if ([version]$currentVersion -lt [version]$desiredVersion) {
+        Write-Host "Older version detected. Upgrading to $desiredVersion..." -ForegroundColor Yellow
+        Start-Process "msiexec.exe" -ArgumentList "/i `"$installerPath`" /qn REINSTALL=ALL REINSTALLMODE=vomus /norestart" -Wait
+    }
+    elseif ([version]$currentVersion -eq [version]$desiredVersion) {
+        Write-Host "NetWorker Client is already up to date." -ForegroundColor Green
+    }
+    else {
+        Write-Host "Installed version ($currentVersion) is newer than desired ($desiredVersion). No action taken." -ForegroundColor Magenta
+    }
+}
+
+# Verify installation
+$newVersion = Get-NetworkerVersion
+if ($newVersion) {
+    Write-Host "Final installed version: $newVersion" -ForegroundColor Cyan
+} else {
+    Write-Host "NetWorker Client installation verification failed." -ForegroundColor Red
+}
