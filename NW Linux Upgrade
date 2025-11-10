@@ -1,0 +1,72 @@
+#!/bin/bash
+# -------------------------------------------------------------------
+# Script: check_and_upgrade_networker.sh
+# Purpose: Check installed EMC NetWorker version and upgrade if needed
+# Works on: RHEL/CentOS/Rocky Linux
+# -------------------------------------------------------------------
+
+# --- CONFIGURATION ---
+TARGET_VERSION="19.9.0.0"   # Update this to your desired version
+INSTALLER_PATH="/tmp/networker"   # Directory where the RPMs are located
+
+# --- FUNCTION: Get current version ---
+get_installed_version() {
+    rpm -qa | grep -i "lgto" | grep -i "networker" | head -n1 | \
+    sed -E 's/.*-([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+).*/\1/' 2>/dev/null
+}
+
+# --- FUNCTION: Compare versions ---
+version_compare() {
+    # Returns 0 if v1 >= v2, 1 if v1 < v2
+    printf '%s\n%s\n' "$1" "$2" | sort -V -C
+    if [ $? -eq 0 ]; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+# --- MAIN LOGIC ---
+echo "--------------------------------------------"
+echo " Checking EMC NetWorker installation status"
+echo "--------------------------------------------"
+
+INSTALLED_VERSION=$(get_installed_version)
+
+if [ -z "$INSTALLED_VERSION" ]; then
+    echo "NetWorker is not installed on this system."
+    INSTALL_NEEDED=true
+else
+    echo "Installed NetWorker version: $INSTALLED_VERSION"
+    version_compare "$INSTALLED_VERSION" "$TARGET_VERSION"
+    if [ $? -eq 1 ]; then
+        echo "Installed version is older than target ($TARGET_VERSION)."
+        INSTALL_NEEDED=true
+    else
+        echo "Installed version ($INSTALLED_VERSION) is up to date or newer."
+        INSTALL_NEEDED=false
+    fi
+fi
+
+# --- INSTALL OR UPGRADE ---
+if [ "$INSTALL_NEEDED" = true ]; then
+    echo "Starting NetWorker installation/upgrade..."
+    if [ -d "$INSTALLER_PATH" ]; then
+        rpm -Uvh $INSTALLER_PATH/*.rpm
+        if [ $? -eq 0 ]; then
+            echo "NetWorker successfully installed/upgraded to version $TARGET_VERSION."
+        else
+            echo "ERROR: Installation failed. Check logs."
+            exit 1
+        fi
+    else
+        echo "ERROR: Installer path $INSTALLER_PATH not found."
+        exit 1
+    fi
+else
+    echo "No upgrade needed."
+fi
+
+echo "--------------------------------------------"
+echo " Script completed."
+echo "--------------------------------------------"
