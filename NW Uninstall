@@ -1,0 +1,105 @@
+<#
+.SYNOPSIS
+    Uninstalls EMC NetWorker client from Windows Server.
+
+.DESCRIPTION
+    This script detects if EMC NetWorker client is installed,
+    stops related services, and uninstalls all components cleanly.
+
+.NOTES
+    Author: Anup Miryala
+    Tested on: Windows Server 2016/2019/2022
+#>
+
+Write-Host "--------------------------------------------"
+Write-Host " EMC NetWorker Uninstallation Script"
+Write-Host "--------------------------------------------" -ForegroundColor Cyan
+
+# --- Function: Stop NetWorker Services ---
+function Stop-NetworkerServices {
+    $services = @("nsrexecd", "nsrd", "nsrjobd", "nsrmmdbd", "nsrindexd")
+    foreach ($svc in $services) {
+        if (Get-Service -Name $svc -ErrorAction SilentlyContinue) {
+            Write-Host "Stopping service: $svc"
+            Stop-Service -Name $svc -Force -ErrorAction SilentlyContinue
+            Set-Service -Name $svc -StartupType Disabled -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+# --- Function: Uninstall using Get-Package / WMI ---
+function Uninstall-Networker {
+    Write-Host "`nChecking for EMC NetWorker installation..." -ForegroundColor Yellow
+
+    # Try Get-Package (PowerShell 5+)
+    $pkg = Get-Package | Where-Object { $_.Name -match "NetWorker" -or $_.Name -match "EMC NetWorker" } -ErrorAction SilentlyContinue
+
+    if (-not $pkg) {
+        # Fallback to Win32_Product if Get-Package fails
+        $pkg = Get-WmiObject -Class Win32_Product | Where-Object { $_.Name -match "NetWorker" -or $_.Name -match "EMC NetWorker" }
+    }
+
+    if ($pkg) {
+        foreach ($app in $pkg) {
+            Write-Host "Found installed package: $($app.Name)"
+            Write-Host "Uninstalling..."
+            try {
+                if ($app -is [Microsoft.PackageManagement.Packaging.SoftwareIdentity]) {
+                    # For Get-Package objects
+                    Uninstall-Package -Name $app.Name -Force -ErrorAction Stop
+                } else {
+                    # For Win32_Product objects
+                    $app.Uninstall() | Out-Null
+                }
+                Write-Host "Successfully uninstalled $($app.Name)." -ForegroundColor Green
+            } catch {
+                Write-Warning "Failed to uninstall $($app.Name): $_"
+            }
+        }
+    } else {
+        Write-Host "NetWorker client not found on this system." -ForegroundColor Green
+    }
+}
+
+# --- Function: Clean up remaining files and registries ---
+function Cleanup-NetworkerFiles {
+    Write-Host "`nCleaning up leftover files and directories..." -ForegroundColor Yellow
+    $paths = @(
+        "C:\Program Files\EMC NetWorker",
+        "C:\Program Files\Legato\nsr",
+        "C:\ProgramData\EMC",
+        "C:\nsr",
+        "C:\Program Files\Dell\EMC NetWorker",
+        "C:\Program Files (x86)\EMC NetWorker"
+    )
+
+    foreach ($path in $paths) {
+        if (Test-Path $path) {
+            Write-Host "Removing: $path"
+            Remove-Item -Path $path -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+
+    Write-Host "Cleaning registry keys..."
+    $regPaths = @(
+        "HKLM:\SOFTWARE\Legato",
+        "HKLM:\SOFTWARE\EMC\NetWorker",
+        "HKLM:\SOFTWARE\Wow6432Node\Legato",
+        "HKLM:\SOFTWARE\Wow6432Node\EMC\NetWorker"
+    )
+    foreach ($reg in $regPaths) {
+        if (Test-Path $reg) {
+            Remove-Item -Path $reg -Recurse -Force -ErrorAction SilentlyContinue
+            Write-Host "Removed registry key: $reg"
+        }
+    }
+}
+
+# --- MAIN EXECUTION ---
+Stop-NetworkerServices
+Uninstall-Networker
+Cleanup-NetworkerFiles
+
+Write-Host "`n--------------------------------------------"
+Write-Host " Uninstallation completed successfully."
+Write-Host "--------------------------------------------" -ForegroundColor Cyan
