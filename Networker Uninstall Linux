@@ -1,0 +1,63 @@
+#!/bin/bash
+#
+# Script: uninstall_networker.sh
+# Purpose: Uninstall EMC NetWorker from Red Hat Linux servers
+# Author: ChatGPT
+#
+
+LOGFILE="/var/log/networker_uninstall_$(date +%F).log"
+
+echo "-----------------------------------------------------------------" | tee -a "$LOGFILE"
+echo " Starting NetWorker uninstall on $(hostname) at $(date)" | tee -a "$LOGFILE"
+echo "-----------------------------------------------------------------" | tee -a "$LOGFILE"
+
+# List of NetWorker-related package name patterns
+PKG_PATTERNS=(
+    "lgtoclnt"
+    "lgtoman"
+    "lgtoasm"
+    "lgtonmc"
+    "lgtolib"
+    "networker"
+    "gst"
+)
+
+echo "[INFO] Checking installed NetWorker packages..." | tee -a "$LOGFILE"
+
+INSTALLED_PKGS=()
+
+for pkg in "${PKG_PATTERNS[@]}"; do
+    FOUND=$(rpm -qa | grep -i "$pkg")
+    if [[ -n "$FOUND" ]]; then
+        echo "[FOUND] $FOUND" | tee -a "$LOGFILE"
+        INSTALLED_PKGS+=("$FOUND")
+    fi
+done
+
+if [[ ${#INSTALLED_PKGS[@]} -eq 0 ]]; then
+    echo "[INFO] No NetWorker packages found. Exiting." | tee -a "$LOGFILE"
+    exit 0
+fi
+
+echo "[INFO] Stopping NetWorker services..." | tee -a "$LOGFILE"
+systemctl stop networker 2>/dev/null
+systemctl stop gst 2>/dev/null
+systemctl stop nsrexecd 2>/dev/null
+
+systemctl disable networker 2>/dev/null
+systemctl disable gst 2>/dev/null
+systemctl disable nsrexecd 2>/dev/null
+
+echo "[INFO] Removing NetWorker packages..." | tee -a "$LOGFILE"
+for pkg in "${INSTALLED_PKGS[@]}"; do
+    echo "[REMOVE] $pkg" | tee -a "$LOGFILE"
+    rpm -e --nodeps "$pkg" >>"$LOGFILE" 2>&1
+done
+
+echo "[INFO] Removing leftover directories (optional)..." | tee -a "$LOGFILE"
+rm -rf /nsr 2>/dev/null
+rm -rf /var/nsr 2>/dev/null
+rm -rf /opt/nsr 2>/dev/null
+
+echo "[INFO] NetWorker uninstall complete." | tee -a "$LOGFILE"
+echo "-----------------------------------------------------------------" | tee -a "$LOGFILE"
