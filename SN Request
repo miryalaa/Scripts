@@ -1,0 +1,82 @@
+ServiceNow Change Request: Firmware Update to Remediate Security Vulnerabilities
+
+Purpose / Summary:
+This change request is to apply the latest vendor-recommended firmware updates on two Windows physical servers in order to remediate two identified security vulnerabilities. These vulnerabilities were reported through internal security scanning tools and require firmware updates to bring the systems into compliance with security and audit standards.
+
+Servers in Scope:
+
+Server 1: <hostname>
+
+Server 2: <hostname>
+
+Reason for Change:
+Security scans have identified two firmware-level vulnerabilities affecting these physical servers. Applying the approved firmware update package is required to eliminate the vulnerabilities and ensure continued compliance with corporate security policies and hardening guidelines.
+
+Change Description / Implementation Plan:
+
+Validate firmware package checksum and verify compatibility with server model.
+
+Place servers into maintenance window as per approved schedule.
+
+Confirm with application owners that no active jobs or dependencies are running.
+
+Perform graceful shutdown of Windows OS.
+
+Apply firmware update using the vendor utility (iLO/DRAC/Lenovo XClarity/etc.).
+
+Power on the server and verify firmware version post-update.
+
+Boot into Windows and validate OS availability.
+
+Confirm system services are running and no errors appear in the event logs.
+
+Perform functional testing with application teams.
+
+Mark change as successful in ServiceNow.
+
+Risk Assessment:
+
+Low to Medium risk. Firmware updates require system reboot and momentary downtime.
+
+Potential risks include firmware update failure, unexpected hardware behavior, or extended outage.
+
+These risks are mitigated by vendor-validated firmware package, pre-update validation, and immediate ability to roll back.
+
+Impact:
+
+Servers will experience brief downtime during reboot.
+
+No long-term impact expected after the update.
+
+Application teams have been notified and approved the planned outage.
+
+Backout / Rollback Plan:
+If issues occur after applying the firmware:
+
+Reboot the server and attempt to revert to the previous firmware (if supported by hardware).
+
+If rollback is not supported, restore configuration via vendor management tool.
+
+If server fails to boot, engage vendor support for emergency recovery.
+
+Notify stakeholders and restore service using documented disaster recovery procedures if needed.
+
+Testing Plan / Validation:
+
+Confirm server boots correctly and hardware is detected.
+
+Validate firmware version upgrade.
+
+Verify Windows OS, services, and applications are functioning normally.
+
+Confirm with application owners post-update.
+
+Approval Requirements:
+
+Server owners
+
+Application owners
+
+Infrastructure platform team
+
+Security team (if required)
