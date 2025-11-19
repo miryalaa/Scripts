@@ -1,0 +1,201 @@
+ServiceNow Change Request – Avocent MP1000 / ACS Firmware Upgrade
+1. Change Type
+
+Normal Change (with implementation plan, test plan, and backout plan)
+
+2. Summary / Short Description
+
+Upgrade firmware on Avocent MP1000 / ACS 8000 appliances to the latest vendor-supported version and apply associated security vulnerability fixes.
+
+3. Business Justification
+
+The Avocent MP1000 / ACS appliances provide remote console access, OOB management, and power control for critical infrastructure.
+
+Current firmware is outdated and contains known security vulnerabilities identified by the Security Team.
+
+The upgrade ensures:
+
+Closure of identified vulnerabilities (e.g., outdated OpenSSL libraries, SSH hardening updates, CVE fixes, etc.).
+
+Compliance with corporate security baseline and audit requirements.
+
+Continued vendor support for ACS appliances.
+
+This change is essential for maintaining secure remote access and reducing operational risk to datacenter infrastructure.
+
+4. Devices in Scope
+
+Primary Node: MP1000 / ACS 8000 – Location: Ashburn
+
+Secondary Node: MP1000 / ACS 8000 – Location: Hillsboro
+
+Both configured in High Availability (HA)
+
+(Modify device names, IPs, or counts as needed)
+
+5. Current Firmware Version
+
+MP1000 / ACS: <current version here>
+
+Latest available version from Vertiv: <target version here>
+
+6. Change Description
+
+Download the latest firmware from Vertiv support portal.
+
+Upgrade both primary and secondary ACS/MP1000 appliances to the latest stable release.
+
+Apply vendor recommended vulnerability patches included in the firmware package.
+
+Validate successful upgrade and establish full HA synchronization.
+
+Confirm accessibility through console session, SSH, and DSView (if applicable).
+
+7. Implementation / Execution Plan
+
+Step-by-step upgrade workflow:
+
+Notify stakeholders and NOC before starting.
+
+Backup current configuration from both ACS appliances.
+
+Verify HA status (Primary active, Secondary standby).
+
+Upload firmware image to the Secondary node.
+
+Initiate upgrade on Secondary appliance first.
+
+Reboot and validate that the Secondary is healthy and rejoined HA cluster.
+
+Upload firmware to Primary appliance.
+
+Initiate upgrade on Primary appliance.
+
+Reboot primary and validate HA sync.
+
+Validate:
+
+Console port sessions
+
+Network reachability
+
+SNMP monitoring
+
+Syslog/AAA integration
+
+DSView connectivity (if used)
+
+Turn the system back over to operations with post-upgrade confirmation.
+
+8. Expected Impact
+
+Minimal impact due to HA configuration.
+
+During each node upgrade, the system will fail over automatically.
+
+Console access should remain available throughout.
+
+No impact expected to production workloads relying on the servers behind these terminal servers.
+
+9. Risk Assessment
+
+Low to Medium risk
+Risks include:
+
+Firmware upgrade failure
+
+HA sync failures
+
+Console port disruption if both nodes experience unexpected reboot
+
+Configuration corruption (mitigated by backups)
+
+Risk mitigation:
+
+Perform upgrade on Secondary first
+
+Full configuration backup
+
+Vendor support available
+
+Scheduled during maintenance window
+
+10. Backout / Rollback Plan
+
+If issues occur:
+
+Reboot appliance back into previous firmware (if supported by dual-image feature).
+
+Restore configuration from backup.
+
+Failback to stable node if HA is impacted.
+
+If both nodes fail, restore using Vertiv USB recovery image.
+
+Contact Vertiv support for emergency assistance if needed.
+
+Rollback estimated time: 30–45 minutes
+
+11. Testing / Validation Steps
+
+Post-upgrade, verify:
+
+HA status = “Healthy / Synchronized”
+
+All console ports are accessible
+
+SSH login works
+
+SNMP RO community works (if configured)
+
+Syslog messages being sent to log collectors
+
+DSView 4 Hub/Spoke connectivity (if applicable)
+
+All monitored services green in NOC dashboard
+
+Obtain confirmation from NOC/Operations.
+
+12. Communication Plan
+
+Notify: NOC, Server Team, Networking Team, Security Team
+
+Announcement 30 minutes prior to beginning change
+
+Notify again upon completion and validation
+
+13. Implementation Window
+
+<Insert preferred date and time>
+
+Recommended: Low-usage maintenance window, typically weekend or late-evening.
+
+Estimated duration: 60–90 minutes
+
+14. Pre-Requisites
+
+Confirm access to:
+
+Web GUI
+
+SSH
+
+DSView (if applicable)
+
+Confirm backup path and config export
+
+Confirm HA is stable
+
+Download firmware ahead of time
+
+Verify no critical maintenance or DR activity occurring simultaneously
+
+15. Approvals Required
+
+Server/Infra Manager
+
+Security Team
+
+Networking
+
+Datacenter Operations
