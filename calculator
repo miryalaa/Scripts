@@ -1,0 +1,158 @@
+import json, time
+from time import sleep
+import sys, threading
+from datetime import datetime, timedelta
+import os, csv
+from os.path import getmtime
+import random
+import atexit
+import signal
+import shutil
+
+side = input('Enter Side(B/S): ')
+leverage = int(3)
+risk = float(input('Enter Risk %: '))
+autoleverage = 'lowestleverage'
+wallet = float(input('Enter Wallet Balance: '))
+stopLossPrice = float(input('Enter SL Price: '))
+OrderPrice = float(input('Enter Order Price: '))
+
+if side == "B":
+
+    print("Order Price:", OrderPrice)
+    stopLoss = (OrderPrice - stopLossPrice) / OrderPrice
+    stopLoss = stopLoss * 100
+
+elif side == "S":
+
+    print("Order Price:", OrderPrice)
+    stopLoss = (stopLossPrice - OrderPrice) / OrderPrice
+    stopLoss = stopLoss * 100
+
+stopLoss = stopLoss / 100
+
+print("++++++++++++++++++++++++++++")
+print("Risk Percentage:", risk)
+print("++++++++++++++++++++++++++++")
+
+riskamount = risk / 100
+risk = wallet * riskamount
+print("Risk:",risk)
+Positionsize = risk / stopLoss
+print("Position Size:",Positionsize)
+Quantity = int(Positionsize * OrderPrice)
+
+if side == 'B':
+
+    if autoleverage == "lowestleverage":
+
+        while True:
+
+            cost = Positionsize / leverage
+            print("Cost:", cost)
+            liquidation = float((OrderPrice * leverage) / (leverage + 1 - ((0.5/100) * leverage)))
+            print("Liquidation:",liquidation)
+
+            print("wallet:",wallet)
+            print("stopLossPrice:",stopLossPrice)
+
+            try:
+                if wallet > cost and stopLossPrice > liquidation:
+                    print("Go Ahead")
+                    break
+                elif wallet < cost:
+                    print("Change leverage")
+                    leverage = leverage + 1
+            except:
+                break
+
+    elif autoleverage == "highestleverage":
+
+        while True:
+
+            print("---------------------------------------------------------------")
+            print("Positionsize:",Positionsize)
+            print("leverage:",leverage)
+            cost = Positionsize / leverage
+            print("Cost:",cost)
+            print("OrderPrice:",OrderPrice)
+            liquidation = float((OrderPrice * leverage) / (leverage + 1 - ((0.5/100) * leverage)))
+            print("liquidation:",liquidation)
+            print("---------------------------------------------------------------")
+
+            try:
+                if leverage == 'maxleverage':
+                    break
+                elif wallet > cost and stopLossPrice > liquidation:
+                    print("Liquidation:",liquidation)
+                    print("Leverage:",leverage)
+                    print("--------------------------------------------")
+                    print(" ")
+                    leverage = leverage + 1
+                elif wallet < cost:
+                    print("Liquidation:",liquidation)
+                    print("Leverage:",leverage)
+                    print("--------------------------------------------")
+                    print(" ")
+                    leverage = leverage + 1
+                else:
+                    break
+            except:
+                break
+
+        leverage = leverage - 1
+
+elif side == 'S':
+
+    if autoleverage == "lowestleverage":
+
+        while True:
+
+            cost = Positionsize / leverage
+            liquidation = float((OrderPrice * leverage) / (leverage - 1 + ((0.5/100) * leverage)))
+            
+            try:
+                if wallet > cost and stopLossPrice < liquidation:
+                    print("Go Ahead")
+                    break
+                elif wallet < cost:
+                    print("Change leverage")
+                    leverage = leverage + 1
+            except:
+                break
+
+    elif autoleverage == "highestleverage":
+
+        while True:
+
+            cost = Positionsize / leverage
+            liquidation = float((OrderPrice * leverage) / (leverage - 1 + ((0.5/100) * leverage)))
+
+            try:
+                if leverage == 'maxleverage':
+                    break
+                elif wallet > cost and stopLossPrice < liquidation:
+                    print("Liquidation:",liquidation)
+                    print("Leverage:",leverage)
+                    print("--------------------------------------------")
+                    print(" ")
+                    leverage = leverage + 1
+                elif wallet < cost:
+                    print("Liquidation:",liquidation)
+                    print("Leverage:",leverage)
+                    print("--------------------------------------------")
+                    print(" ")
+                    leverage = leverage + 1
+                else:
+                    break
+            except:
+                break
+
+        leverage = leverage - 1
+
+print('')
+print('')
+print('------------------------------------------------')
+print("Quantity: ",Quantity)
+print("Leverage: ", leverage)
+print('------------------------------------------------')
