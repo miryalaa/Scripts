@@ -1,15 +1,21 @@
-$Download = "https://aka.ms/AzureConnectedMachineAgentWindows"
-$File = "AzureConnectedMachineAgent.msi"
+# Download agent
+Invoke-WebRequest -Uri "https://aka.ms/AzureConnectedMachineAgentWindows" -OutFile "AzureConnectedMachineAgent.msi"
 
-Invoke-WebRequest -Uri $Download -OutFile $File
+# Install agent silently
+msiexec /i AzureConnectedMachineAgent.msi /qn /l*v C:\Temp\Arc_Install.log
 
-msiexec /i $File /qn
+# Generate correlation ID
+$CorrelationID = (New-Guid).Guid
 
+# Connect the agent with all parameters
 azcmagent connect `
-  --name "$(hostname)" `
   --resource-group "MyRG" `
+  --name $env:COMPUTERNAME `
   --location "eastus" `
-  --subscription "<subid>" `
-  --service-principal-id "<appid>" `
+  --subscription "<subscription-id>" `
+  --tenant-id "<tenant-id>" `
+  --service-principal-id "<app-id>" `
   --service-principal-secret "<secret>" `
-  --tenant-id "<tenant>"
+  --auth-type "service-principal" `
+  --correlation-id $CorrelationID `
+  --cloud "AzureCloud"
