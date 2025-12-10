@@ -1,0 +1,2 @@
+$Installer = "AzureConnectedMachineAgent.msi"
+Invoke-WebRequest -Uri "https://aka.ms/AzureConnectedMachineAgentWindows" -OutFile $Installer
