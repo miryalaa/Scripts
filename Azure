@@ -1,2 +1,15 @@
-$Installer = "AzureConnectedMachineAgent.msi"
-Invoke-WebRequest -Uri "https://aka.ms/AzureConnectedMachineAgentWindows" -OutFile $Installer
+$Download = "https://aka.ms/AzureConnectedMachineAgentWindows"
+$File = "AzureConnectedMachineAgent.msi"
+
+Invoke-WebRequest -Uri $Download -OutFile $File
+
+msiexec /i $File /qn
+
+azcmagent connect `
+  --name "$(hostname)" `
+  --resource-group "MyRG" `
+  --location "eastus" `
+  --subscription "<subid>" `
+  --service-principal-id "<appid>" `
+  --service-principal-secret "<secret>" `
+  --tenant-id "<tenant>"
