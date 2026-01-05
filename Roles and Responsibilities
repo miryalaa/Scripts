@@ -1,0 +1,25 @@
+As Manager, Systems Automation, [Your Name] is currently responsible for the following critical functions, which will continue to be essential to the company's infrastructure operations and future growth:
+
+Leading the administration, maintenance, and future upgrades of a large-scale VMware vSphere environment across two datacenters, managing over 600 ESXi hosts and 11,000+ virtual machines; this includes ongoing management of HA/DRS clusters, Distributed Switches, Host Profiles, vMotion/Storage vMotion, security hardening, and performance optimization.
+
+Overseeing VMware vRealize Automation (vRA) operations, including ongoing management of the current 8.16.2 environment, scale-out architecture in Development and Production, SSL certificate lifecycle management via CyberArk, and planning for future enhancements to support cloud automation demands.
+
+Managing the company’s hybrid and private cloud infrastructure, encompassing VMware ecosystem (vSphere, vRA, vRO), hyperconverged systems, Windows Server (up to 2022), Red Hat Enterprise Linux (up to 9), and Azure Arc-enabled servers; responsibilities include day-to-day operations, patching, compliance, gold template maintenance, and certification of new OS versions for production use.
+
+Directing automated server provisioning and deployment for both virtual and physical environments, including template-based Windows builds, PowerShell/BMC BladeLogic automation, physical Dell hardware configuration, OS migrations, and failover clustering to ensure reliable and scalable infrastructure delivery.
+
+Leading automation initiatives using Ansible and Chef, including development and maintenance of agent packages (Tanium, BigFix, Splunk), integration into CI/CD pipelines, code review/approval via GitHub, enforcement of security and performance standards, and ongoing automation support for server builds and application deployments.
+
+Maintaining disaster recovery capabilities through Site Recovery Manager (SRM), regular testing with storage replication, and ongoing refinement of business continuity processes to protect critical systems.
+
+Managing virtual networking configurations, Active Directory, DNS/DHCP services, and cross-functional coordination with network and storage teams for SAN migrations, LUN provisioning, and IP/DNS management.
+
+Evaluating emerging technologies (hardware, networking, and software solutions), providing strategic assessments including ROI analysis and long-term implications to guide infrastructure roadmap decisions.
+
+Overseeing Citrix XenApp and Provisioning Services environments, including template and vDisk management to support virtual desktop and application delivery.
+
+Driving operational excellence through proactive performance monitoring, patching schedules, process standardization, issue prevention, and continuous improvement of infrastructure practices aligned with industry best practices.
+
+Providing technical leadership by supervising team workloads, ensuring quality controls across development and deployment, collaborating with project managers and architects on release planning, and maintaining comprehensive documentation (run books, procedures, and diagrams) for sustained operational reliability and knowledge continuity.
+
+These responsibilities require deep specialized expertise in enterprise virtualization, automation, cloud management, and infrastructure security—skills that remain critical to the organization's ongoing stability, scalability, and digital transformation objectives.
