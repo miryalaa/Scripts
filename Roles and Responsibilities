@@ -14,6 +14,8 @@ Maintaining disaster recovery capabilities through Site Recovery Manager (SRM), 
 
 Managing virtual networking configurations, Active Directory, DNS/DHCP services, and cross-functional coordination with network and storage teams for SAN migrations, LUN provisioning, and IP/DNS management.
 
+Enterprise Tooling Ownership: Own the deployment, lifecycle management, and operational support of critical infrastructure tools including Nlyte, Avocent MP1000, EMC CloudLink, and NTT-supported platforms, ensuring secure integration, compliance alignment, and continuous availability across datacenter and hybrid cloud environments.
+
 Evaluating emerging technologies (hardware, networking, and software solutions), providing strategic assessments including ROI analysis and long-term implications to guide infrastructure roadmap decisions.
 
 Overseeing Citrix XenApp and Provisioning Services environments, including template and vDisk management to support virtual desktop and application delivery.
