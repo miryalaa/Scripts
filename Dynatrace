@@ -1,0 +1,7 @@
+start /wait .\Dynatrace-OneAgent-Windows-1.333.55.20260317-092136.exe --set-monitoring-mode=discovery --set-app-log-content-access=true --set-network-zone=colo.ashburn-va.am5 --quiet
+
+
+
+
+.\Dynatrace-OneAgent-Windows-*.exe --unpack-msi
+msiexec /i Dynatrace-OneAgent-Windows.msi /quiet /qn ADDITIONAL_CONFIGURATION="--set-monitoring-mode=discovery --set-app-log-content-access=true --set-network-zone=colo.ashburn-va.am5"
