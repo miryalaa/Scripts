@@ -1,7 +1,53 @@
-start /wait .\Dynatrace-OneAgent-Windows-1.333.55.20260317-092136.exe --set-monitoring-mode=discovery --set-app-log-content-access=true --set-network-zone=colo.ashburn-va.am5 --quiet
+# === STEP 2: Poll for the service (max 10 minutes, every 30 seconds) ===
+$maxMinutes      = 10
+$intervalSeconds = 30
+$maxChecks       = ($maxMinutes * 60) / $intervalSeconds   # = 20 checks
 
+Write-Host "`nNow polling for service '$mainServiceName' (checking every $intervalSeconds seconds, max $maxMinutes minutes)..." -ForegroundColor Cyan
 
+$serviceFound = $false
 
+for ($i = 1; $i -le $maxChecks; $i++) {
+    $mainService = Get-Service -Name $mainServiceName -ErrorAction SilentlyContinue
+    $watchdog    = Get-Service -Name $watchdogServiceName -ErrorAction SilentlyContinue
 
-.\Dynatrace-OneAgent-Windows-*.exe --unpack-msi
-msiexec /i Dynatrace-OneAgent-Windows.msi /quiet /qn ADDITIONAL_CONFIGURATION="--set-monitoring-mode=discovery --set-app-log-content-access=true --set-network-zone=colo.ashburn-va.am5"
+    if ($mainService -or $watchdog) {
+        $serviceFound = $true
+        Write-Host "`n✓ Service(s) detected after $(($i-1) * $intervalSeconds) seconds!" -ForegroundColor Green
+        break
+    }
+
+    Write-Host "  Check $i/$maxChecks - Service not found yet. Waiting $intervalSeconds seconds..." -ForegroundColor Gray
+    Start-Sleep -Seconds $intervalSeconds
+}
+
+# === STEP 3: Final status check ===
+Write-Host "`n=== FINAL SERVICE STATUS ===" -ForegroundColor Cyan
+
+if (-not $serviceFound) {
+    Write-Host "✗ TIMEOUT: Service '$mainServiceName' was NOT found after $maxMinutes minutes." -ForegroundColor Red
+    Write-Host "   Check installer logs: C:\ProgramData\dynatrace\oneagent\log\installer\" -ForegroundColor Red
+} else {
+    Write-Host "✓ Service(s) found!" -ForegroundColor Green
+}
+
+# Show status of both possible services
+$allServices = Get-Service -Name $mainServiceName, $watchdogServiceName -ErrorAction SilentlyContinue |
+               Select-Object Name, Status, StartType, DisplayName
+
+if ($allServices) {
+    $allServices | Format-Table -AutoSize
+} else {
+    Write-Host "No Dynatrace services detected." -ForegroundColor Yellow
+}
+
+# Optional: Auto-start the main service if it exists but is stopped
+if ($mainService -and $mainService.Status -ne 'Running') {
+    Write-Host "`nMain service is not running. Attempting to start it..." -ForegroundColor Yellow
+    try {
+        Start-Service -Name $mainServiceName -ErrorAction Stop
+        Write-Host "✓ Main service started successfully." -ForegroundColor Green
+    } catch {
+        Write-Host "Failed to start service: $($_.Exception.Message)" -ForegroundColor Red
+    }
+}
