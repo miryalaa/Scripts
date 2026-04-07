@@ -1,42 +1,59 @@
 # =============================================
-# PowerShell Script: Delete files older than 7 days on D: drive
+# Delete .log files older than 7 days in D:\Evenviewerlogs
 # =============================================
 
-$DrivePath = "D:\"
+$LogPath = "D:\Evenviewerlogs"
 $DaysToKeep = 7
 
-# Calculate the cutoff date
+# Calculate cutoff date (files older than 7 days)
 $CutoffDate = (Get-Date).AddDays(-$DaysToKeep)
 
-Write-Host "Starting cleanup on $DrivePath" -ForegroundColor Cyan
-Write-Host "Deleting files older than $DaysToKeep days (before $CutoffDate)" -ForegroundColor Yellow
+Write-Host "=== Log Files Cleanup Script ===" -ForegroundColor Cyan
+Write-Host "Target Folder : $LogPath" -ForegroundColor White
+Write-Host "Deleting .log files older than $DaysToKeep days" -ForegroundColor Yellow
 
-# Get and delete files older than cutoff date
+# ==================== Directory Check ====================
+if (-Not (Test-Path -Path $LogPath)) {
+    Write-Host "ERROR: Directory does not exist!" -ForegroundColor Red
+    Write-Host "Path: $LogPath" -ForegroundColor Red
+    Write-Host "Please create the folder or correct the path and try again." -ForegroundColor Yellow
+    exit 1
+}
+
+Write-Host "Directory found. Proceeding with cleanup..." -ForegroundColor Green
+
+# ==================== Find and Delete Old Log Files ====================
 try {
-    $FilesToDelete = Get-ChildItem -Path $DrivePath -Recurse -File -ErrorAction SilentlyContinue |
+    $FilesToDelete = Get-ChildItem -Path $LogPath -Filter "*.log" -File -Recurse -ErrorAction SilentlyContinue |
                      Where-Object { $_.LastWriteTime -lt $CutoffDate }
 
     if ($FilesToDelete.Count -eq 0) {
-        Write-Host "No files older than $DaysToKeep days found." -ForegroundColor Green
+        Write-Host "`nNo log files older than $DaysToKeep days were found." -ForegroundColor Green
     }
     else {
-        Write-Host "Found $($FilesToDelete.Count) files to delete." -ForegroundColor Yellow
+        Write-Host "`nFound $($FilesToDelete.Count) old log files to delete." -ForegroundColor Yellow
         
-        $FilesToDelete | ForEach-Object {
+        $DeletedCount = 0
+        
+        foreach ($file in $FilesToDelete) {
             try {
-                Remove-Item -Path $_.FullName -Force -ErrorAction Stop
-                Write-Host "Deleted: $($_.FullName)" -ForegroundColor Gray
+                Remove-Item -Path $file.FullName -Force -ErrorAction Stop
+                Write-Host "Deleted: $($file.FullName)" -ForegroundColor Gray
+                $DeletedCount++
             }
             catch {
-                Write-Host "Failed to delete: $($_.FullName) - $($_.Exception.Message)" -ForegroundColor Red
+                Write-Host "Failed to delete: $($file.FullName)" -ForegroundColor Red
+                Write-Host "   Error: $($_.Exception.Message)" -ForegroundColor Red
             }
         }
         
-        Write-Host "`nCleanup completed! Deleted $($FilesToDelete.Count) files." -ForegroundColor Green
+        Write-Host "`nCleanup completed successfully!" -ForegroundColor Green
+        Write-Host "Total log files deleted: $DeletedCount" -ForegroundColor Green
     }
 }
 catch {
-    Write-Host "An error occurred during cleanup: $($_.Exception.Message)" -ForegroundColor Red
+    Write-Host "`nAn unexpected error occurred during cleanup:" -ForegroundColor Red
+    Write-Host $_.Exception.Message -ForegroundColor Red
 }
 
-Write-Host "Script finished." -ForegroundColor Cyan
+Write-Host "`nScript finished at $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -ForegroundColor Cyan
