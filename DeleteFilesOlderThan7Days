@@ -1,0 +1,42 @@
+# =============================================
+# PowerShell Script: Delete files older than 7 days on D: drive
+# =============================================
+
+$DrivePath = "D:\"
+$DaysToKeep = 7
+
+# Calculate the cutoff date
+$CutoffDate = (Get-Date).AddDays(-$DaysToKeep)
+
+Write-Host "Starting cleanup on $DrivePath" -ForegroundColor Cyan
+Write-Host "Deleting files older than $DaysToKeep days (before $CutoffDate)" -ForegroundColor Yellow
+
+# Get and delete files older than cutoff date
+try {
+    $FilesToDelete = Get-ChildItem -Path $DrivePath -Recurse -File -ErrorAction SilentlyContinue |
+                     Where-Object { $_.LastWriteTime -lt $CutoffDate }
+
+    if ($FilesToDelete.Count -eq 0) {
+        Write-Host "No files older than $DaysToKeep days found." -ForegroundColor Green
+    }
+    else {
+        Write-Host "Found $($FilesToDelete.Count) files to delete." -ForegroundColor Yellow
+        
+        $FilesToDelete | ForEach-Object {
+            try {
+                Remove-Item -Path $_.FullName -Force -ErrorAction Stop
+                Write-Host "Deleted: $($_.FullName)" -ForegroundColor Gray
+            }
+            catch {
+                Write-Host "Failed to delete: $($_.FullName) - $($_.Exception.Message)" -ForegroundColor Red
+            }
+        }
+        
+        Write-Host "`nCleanup completed! Deleted $($FilesToDelete.Count) files." -ForegroundColor Green
+    }
+}
+catch {
+    Write-Host "An error occurred during cleanup: $($_.Exception.Message)" -ForegroundColor Red
+}
+
+Write-Host "Script finished." -ForegroundColor Cyan
