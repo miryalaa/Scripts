@@ -1,0 +1,70 @@
+# Requires VMware PowerCLI
+# VM must have VMware Tools running
+# Guest credentials required
+
+$vCenterServer = "your-vcenter.domain.com"
+$guestUser = "Administrator"
+$guestPass = "Password123!"
+
+Connect-VIServer -Server $vCenterServer
+
+$results = @()
+
+$VMs = Get-VM | Where-Object {$_.PowerState -eq "PoweredOn"}
+
+foreach ($vm in $VMs) {
+
+    Write-Host "Processing $($vm.Name)" -ForegroundColor Cyan
+
+    # Script to run inside VM
+    $script = @"
+\$dVol = Get-WmiObject Win32_LogicalDisk -Filter "DeviceID='D:'"
+if (\$dVol) {
+    \$partition = (\$dVol | Get-WmiObject -Query "ASSOCIATORS OF {Win32_LogicalDisk.DeviceID='D:'} WHERE AssocClass=Win32_LogicalDiskToPartition")
+    \$disk = (\$partition | Get-WmiObject -Query "ASSOCIATORS OF {Win32_DiskPartition.DeviceID='\$($_.DeviceID)'} WHERE AssocClass=Win32_DiskDriveToDiskPartition")
+
+    \$disk | Select Index, SCSIPort, SCSITargetId, Size
+}
+"@
+
+    try {
+        $guestResult = Invoke-VMScript -VM $vm -ScriptText $script `
+            -GuestUser $guestUser -GuestPassword $guestPass -ErrorAction Stop
+
+        $diskInfo = $guestResult.ScriptOutput | ConvertFrom-Csv
+
+        if (!$diskInfo) { continue }
+
+        # Get VMDKs from vCenter
+        $hardDisks = Get-HardDisk -VM $vm
+
+        foreach ($disk in $hardDisks) {
+
+            $scsiUnit = $disk.ExtensionData.UnitNumber
+
+            # Match SCSI Target ID with Unit Number
+            if ($scsiUnit -eq $diskInfo.SCSITargetId) {
+
+                $obj = [PSCustomObject]@{
+                    VMName           = $vm.Name
+                    DriveLetter      = "D:"
+                    WindowsDiskIndex = $diskInfo.Index
+                    SCSITargetId     = $diskInfo.SCSITargetId
+                    VMDK_Label       = $disk.Name   # <-- Hard disk number (what you want)
+                    VMDK_CapacityGB  = $disk.CapacityGB
+                    Datastore        = $disk.Filename.Split(']')[0].Trim('[')
+                }
+
+                $results += $obj
+            }
+        }
+
+    } catch {
+        Write-Host "Failed on $($vm.Name)" -ForegroundColor Yellow
+    }
+}
+
+$results | Format-Table -AutoSize
+$results | Export-Csv "DDrive_HardDisk_Mapping.csv" -NoTypeInformation
+
+Disconnect-VIServer -Confirm:$false
