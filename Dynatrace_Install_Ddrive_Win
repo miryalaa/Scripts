@@ -1,135 +1,146 @@
 # =========================
-# CONFIGURATION
+# CONFIG
 # =========================
 $vcenter     = "vcenter.yourdomain.com"
 $vmName      = "Your-VM-Name"
 $increaseGB  = 50
-$logFile     = "C:\Temp\VM_Drive_Extend_$vmName.log"
+$logFile     = "C:\Temp\VM_Automation_$vmName.log"
 
-# Dynatrace details
-$dtInstallerUrl = "https://your-environment.live.dynatrace.com/api/v1/deployment/installer/agent/windows/default/latest?Api-Token=YOUR_API_TOKEN"
-$dtInstallerPath = "C:\Temp\Dynatrace-OneAgent.exe"
-$dtInstallDir = "D:\Dynatrace"
+# Dynatrace settings
+$dtInstallerUrl = "https://your-dynatrace-url/api/v1/deployment/installer/agent/windows/default/latest?Api-Token=XXXXX"
+$dtInstaller    = "C:\Temp\Dynatrace-OneAgent.exe"
+$dtPath         = "D:\Dynatrace"
+$networkZone    = "prod-dc1"
 
 # =========================
-# LOGGING FUNCTION
+# LOGGING
 # =========================
-function Write-Log {
-    param ($message)
-    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-    $entry = "$timestamp - $message"
-    Write-Host $entry
-    Add-Content -Path $logFile -Value $entry
+function Log {
+    param($msg)
+    $line = "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') - $msg"
+    Write-Host $line
+    Add-Content $logFile $line
 }
 
-Write-Log "===== Script Started ====="
+Log "===== START ====="
 
 # =========================
-# CONNECT TO VCENTER
+# CONNECT VCENTER
 # =========================
 Import-Module VMware.PowerCLI
-Connect-VIServer -Server $vcenter | Out-Null
-Write-Log "Connected to vCenter"
+Connect-VIServer $vcenter | Out-Null
+Log "Connected to vCenter"
 
-$vm = Get-VM -Name $vmName -ErrorAction Stop
+$vm = Get-VM $vmName
 
-# =========================
-# SNAPSHOT CHECK
-# =========================
-if (Get-Snapshot -VM $vm) {
-    Write-Log "ERROR: Snapshot exists. Exiting."
+# Snapshot check
+if (Get-Snapshot $vm) {
+    Log "ERROR: Snapshot exists. Exiting."
     exit
 }
 
 # =========================
-# DETECT D: DISK (INSIDE GUEST)
+# GET D: DISK (Windows)
 # =========================
-$guestDetect = @'
-$partition = Get-Partition -DriveLetter D
-$disk = $partition | Get-Disk
+$diskId = Invoke-VMScript -VM $vm `
+    -ScriptText '(Get-Partition -DriveLetter D).DiskNumber' `
+    -GuestUser "Administrator" -GuestPassword "PASSWORD" `
+    -ScriptType Powershell
 
-[PSCustomObject]@{
-    TargetId = $partition.Offset
-    DiskNumber = $disk.Number
-}
-'@
-
-$result = Invoke-VMScript -VM $vm -ScriptText $guestDetect -GuestUser "Administrator" -GuestPassword "PASSWORD" -ScriptType Powershell
-$output = $result.ScriptOutput
-
-# Fallback simpler mapping (most reliable)
-$targetId = (Invoke-VMScript -VM $vm -ScriptText '((Get-Partition -DriveLetter D).DiskNumber)' -GuestUser "Administrator" -GuestPassword "PASSWORD" -ScriptType Powershell).ScriptOutput.Trim()
-
-Write-Log "Detected Windows DiskNumber for D: $targetId"
+$diskId = $diskId.ScriptOutput.Trim()
+Log "D: mapped to Windows Disk $diskId"
 
 # =========================
-# MAP TO VMDK
+# MAP TO VMWARE DISK
 # =========================
-$hardDisk = Get-HardDisk -VM $vm | Where-Object {
-    $_.ExtensionData.UnitNumber -eq [int]$targetId
+$hd = Get-HardDisk -VM $vm | Where-Object {
+    $_.ExtensionData.UnitNumber -eq [int]$diskId
 }
 
-if (-not $hardDisk) {
-    Write-Log "ERROR: Unable to map disk"
+if (-not $hd) {
+    Log "ERROR: Disk mapping failed"
     exit
 }
 
-Write-Log "Mapped to $($hardDisk.Name)"
+Log "Mapped to $($hd.Name)"
 
 # =========================
-# EXPAND DISK
+# EXPAND VMDK
 # =========================
-$oldSize = $hardDisk.CapacityGB
-$newSize = $oldSize + $increaseGB
-
-Set-HardDisk -HardDisk $hardDisk -CapacityGB $newSize -Confirm:$false | Out-Null
-Write-Log "Expanded disk from $oldSize GB to $newSize GB"
+$newSize = $hd.CapacityGB + $increaseGB
+Set-HardDisk -HardDisk $hd -CapacityGB $newSize -Confirm:$false
+Log "Expanded disk to $newSize GB"
 
 # =========================
-# EXTEND D DRIVE
+# EXTEND WINDOWS FILESYSTEM
 # =========================
-$extendScript = @'
+Invoke-VMScript -VM $vm `
+    -ScriptText @'
 $size = Get-PartitionSupportedSize -DriveLetter D
 Resize-Partition -DriveLetter D -Size $size.SizeMax
-(Get-Volume -DriveLetter D).Size
-'@
+'@ `
+    -GuestUser "Administrator" -GuestPassword "PASSWORD" `
+    -ScriptType Powershell
 
-$newDriveSize = Invoke-VMScript -VM $vm -ScriptText $extendScript -GuestUser "Administrator" -GuestPassword "PASSWORD" -ScriptType Powershell
-
-Write-Log "Extended D drive. New size: $($newDriveSize.ScriptOutput)"
+Log "Extended D: drive"
 
 # =========================
-# VALIDATE SIZE
+# DOWNLOAD DYNATRACE
 # =========================
-if (-not $newDriveSize.ScriptOutput) {
-    Write-Log "ERROR: Resize validation failed"
-    exit
-}
+Invoke-VMScript -VM $vm `
+-ScriptText @"
+New-Item -ItemType Directory -Path '$dtPath' -Force
+Invoke-WebRequest -Uri '$dtInstallerUrl' -OutFile '$dtInstaller'
+"@ `
+-GuestUser "Administrator" -GuestPassword "PASSWORD" `
+-ScriptType Powershell
 
-Write-Log "Resize validated successfully"
+Log "Downloaded Dynatrace installer"
 
 # =========================
 # INSTALL DYNATRACE
 # =========================
-$installScript = @"
-# Create directory
-New-Item -ItemType Directory -Path "$dtInstallDir" -Force
+Invoke-VMScript -VM $vm `
+-ScriptText @"
+Start-Process '$dtInstaller' `
+  -ArgumentList '/quiet INSTALL_PATH=$dtPath APP_LOG_CONTENT_ACCESS=1 MONITORING_MODE=fullstack NETWORK_ZONE=$networkZone' `
+  -Wait
+"@ `
+-GuestUser "Administrator" -GuestPassword "PASSWORD" `
+-ScriptType Powershell
 
-# Download installer
-Invoke-WebRequest -Uri "$dtInstallerUrl" -OutFile "$dtInstallerPath"
+Log "Dynatrace installed"
 
-# Install silently to D:
-Start-Process "$dtInstallerPath" -ArgumentList "/quiet INSTALL_PATH=$dtInstallDir" -Wait
+# =========================
+# CONFIGURE DYNATRACE (POST-INSTALL SAFE METHOD)
+# =========================
+Invoke-VMScript -VM $vm `
+-ScriptText @"
+& '$dtPath\agent\tools\oneagentctl.exe' `
+  --set-monitoring-mode=fullstack `
+  --set-app-log-content-access=true `
+  --set-network-zone=$networkZone
+"@ `
+-GuestUser "Administrator" -GuestPassword "PASSWORD" `
+-ScriptType Powershell
 
-Write-Output "Dynatrace installation completed"
-"@
+Log "Dynatrace configured"
 
-Invoke-VMScript -VM $vm -ScriptText $installScript -GuestUser "Administrator" -GuestPassword "PASSWORD" -ScriptType Powershell
+# =========================
+# VALIDATION
+# =========================
+$validate = Invoke-VMScript -VM $vm `
+-ScriptText @'
+Get-Service "Dynatrace OneAgent"
+Get-Volume -DriveLetter D | Select Size, SizeRemaining
+'@ `
+-GuestUser "Administrator" -GuestPassword "PASSWORD" `
+-ScriptType Powershell
 
-Write-Log "Dynatrace installed on D drive"
+Log "Validation complete: $($validate.ScriptOutput)"
 
 # =========================
 # COMPLETE
 # =========================
-Write-Log "===== Script Completed Successfully ====="
 Disconnect-VIServer -Confirm:$false
+Log "===== COMPLETE ====="
