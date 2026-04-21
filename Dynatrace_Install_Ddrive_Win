@@ -6,6 +6,11 @@ $vmName      = "Your-VM-Name"
 $increaseGB  = 50
 $logFile     = "C:\Temp\VM_Drive_Extend_$vmName.log"
 
+# Dynatrace details
+$dtInstallerUrl = "https://your-environment.live.dynatrace.com/api/v1/deployment/installer/agent/windows/default/latest?Api-Token=YOUR_API_TOKEN"
+$dtInstallerPath = "C:\Temp\Dynatrace-OneAgent.exe"
+$dtInstallDir = "D:\Dynatrace"
+
 # =========================
 # LOGGING FUNCTION
 # =========================
@@ -24,81 +29,104 @@ Write-Log "===== Script Started ====="
 # =========================
 Import-Module VMware.PowerCLI
 Connect-VIServer -Server $vcenter | Out-Null
-Write-Log "Connected to vCenter: $vcenter"
+Write-Log "Connected to vCenter"
 
-# =========================
-# GET VM
-# =========================
 $vm = Get-VM -Name $vmName -ErrorAction Stop
-Write-Log "Target VM: $vmName"
 
 # =========================
-# VALIDATION CHECKS
+# SNAPSHOT CHECK
 # =========================
 if (Get-Snapshot -VM $vm) {
-    Write-Log "ERROR: VM has snapshots. Exiting."
+    Write-Log "ERROR: Snapshot exists. Exiting."
     exit
 }
 
-Write-Log "No snapshots found"
-
 # =========================
-# GET D: DRIVE DISK INFO (INSIDE GUEST)
+# DETECT D: DISK (INSIDE GUEST)
 # =========================
-$guestScript = @'
+$guestDetect = @'
 $partition = Get-Partition -DriveLetter D
 $disk = $partition | Get-Disk
 
 [PSCustomObject]@{
+    TargetId = $partition.Offset
     DiskNumber = $disk.Number
-    BusNumber  = $disk.BusNumber
-    TargetId   = $disk.Number
-    SizeGB     = [math]::Round($disk.Size/1GB,2)
 }
 '@
 
-$result = Invoke-VMScript -VM $vm -ScriptText $guestScript -GuestUser "Administrator" -GuestPassword "PASSWORD" -ScriptType Powershell
+$result = Invoke-VMScript -VM $vm -ScriptText $guestDetect -GuestUser "Administrator" -GuestPassword "PASSWORD" -ScriptType Powershell
+$output = $result.ScriptOutput
 
-$data = $result.ScriptOutput | ConvertFrom-String
-$targetId = ($data | Where-Object {$_ -match "TargetId"}).P2.Trim()
+# Fallback simpler mapping (most reliable)
+$targetId = (Invoke-VMScript -VM $vm -ScriptText '((Get-Partition -DriveLetter D).DiskNumber)' -GuestUser "Administrator" -GuestPassword "PASSWORD" -ScriptType Powershell).ScriptOutput.Trim()
 
-Write-Log "Detected D: drive on Windows Disk TargetId: $targetId"
+Write-Log "Detected Windows DiskNumber for D: $targetId"
 
 # =========================
-# MAP TO VMWARE HARD DISK
+# MAP TO VMDK
 # =========================
 $hardDisk = Get-HardDisk -VM $vm | Where-Object {
     $_.ExtensionData.UnitNumber -eq [int]$targetId
 }
 
 if (-not $hardDisk) {
-    Write-Log "ERROR: Could not map D: to a VMDK"
+    Write-Log "ERROR: Unable to map disk"
     exit
 }
 
-Write-Log "Mapped to VMware Disk: $($hardDisk.Name)"
+Write-Log "Mapped to $($hardDisk.Name)"
 
 # =========================
 # EXPAND DISK
 # =========================
-$newSize = $hardDisk.CapacityGB + $increaseGB
+$oldSize = $hardDisk.CapacityGB
+$newSize = $oldSize + $increaseGB
 
 Set-HardDisk -HardDisk $hardDisk -CapacityGB $newSize -Confirm:$false | Out-Null
-Write-Log "Expanded disk from $($hardDisk.CapacityGB)GB to $newSize GB"
+Write-Log "Expanded disk from $oldSize GB to $newSize GB"
 
 # =========================
-# EXTEND D: DRIVE IN WINDOWS
+# EXTEND D DRIVE
 # =========================
 $extendScript = @'
-$drive = "D"
-$size = Get-PartitionSupportedSize -DriveLetter $drive
-Resize-Partition -DriveLetter $drive -Size $size.SizeMax
-Write-Output "D drive extended"
+$size = Get-PartitionSupportedSize -DriveLetter D
+Resize-Partition -DriveLetter D -Size $size.SizeMax
+(Get-Volume -DriveLetter D).Size
 '@
 
-Invoke-VMScript -VM $vm -ScriptText $extendScript -GuestUser "Administrator" -GuestPassword "PASSWORD" -ScriptType Powershell
+$newDriveSize = Invoke-VMScript -VM $vm -ScriptText $extendScript -GuestUser "Administrator" -GuestPassword "PASSWORD" -ScriptType Powershell
 
-Write-Log "Extended D: drive inside guest OS"
+Write-Log "Extended D drive. New size: $($newDriveSize.ScriptOutput)"
+
+# =========================
+# VALIDATE SIZE
+# =========================
+if (-not $newDriveSize.ScriptOutput) {
+    Write-Log "ERROR: Resize validation failed"
+    exit
+}
+
+Write-Log "Resize validated successfully"
+
+# =========================
+# INSTALL DYNATRACE
+# =========================
+$installScript = @"
+# Create directory
+New-Item -ItemType Directory -Path "$dtInstallDir" -Force
+
+# Download installer
+Invoke-WebRequest -Uri "$dtInstallerUrl" -OutFile "$dtInstallerPath"
+
+# Install silently to D:
+Start-Process "$dtInstallerPath" -ArgumentList "/quiet INSTALL_PATH=$dtInstallDir" -Wait
+
+Write-Output "Dynatrace installation completed"
+"@
+
+Invoke-VMScript -VM $vm -ScriptText $installScript -GuestUser "Administrator" -GuestPassword "PASSWORD" -ScriptType Powershell
+
+Write-Log "Dynatrace installed on D drive"
 
 # =========================
 # COMPLETE
