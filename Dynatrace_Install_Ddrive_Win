@@ -1,0 +1,107 @@
+# =========================
+# CONFIGURATION
+# =========================
+$vcenter     = "vcenter.yourdomain.com"
+$vmName      = "Your-VM-Name"
+$increaseGB  = 50
+$logFile     = "C:\Temp\VM_Drive_Extend_$vmName.log"
+
+# =========================
+# LOGGING FUNCTION
+# =========================
+function Write-Log {
+    param ($message)
+    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+    $entry = "$timestamp - $message"
+    Write-Host $entry
+    Add-Content -Path $logFile -Value $entry
+}
+
+Write-Log "===== Script Started ====="
+
+# =========================
+# CONNECT TO VCENTER
+# =========================
+Import-Module VMware.PowerCLI
+Connect-VIServer -Server $vcenter | Out-Null
+Write-Log "Connected to vCenter: $vcenter"
+
+# =========================
+# GET VM
+# =========================
+$vm = Get-VM -Name $vmName -ErrorAction Stop
+Write-Log "Target VM: $vmName"
+
+# =========================
+# VALIDATION CHECKS
+# =========================
+if (Get-Snapshot -VM $vm) {
+    Write-Log "ERROR: VM has snapshots. Exiting."
+    exit
+}
+
+Write-Log "No snapshots found"
+
+# =========================
+# GET D: DRIVE DISK INFO (INSIDE GUEST)
+# =========================
+$guestScript = @'
+$partition = Get-Partition -DriveLetter D
+$disk = $partition | Get-Disk
+
+[PSCustomObject]@{
+    DiskNumber = $disk.Number
+    BusNumber  = $disk.BusNumber
+    TargetId   = $disk.Number
+    SizeGB     = [math]::Round($disk.Size/1GB,2)
+}
+'@
+
+$result = Invoke-VMScript -VM $vm -ScriptText $guestScript -GuestUser "Administrator" -GuestPassword "PASSWORD" -ScriptType Powershell
+
+$data = $result.ScriptOutput | ConvertFrom-String
+$targetId = ($data | Where-Object {$_ -match "TargetId"}).P2.Trim()
+
+Write-Log "Detected D: drive on Windows Disk TargetId: $targetId"
+
+# =========================
+# MAP TO VMWARE HARD DISK
+# =========================
+$hardDisk = Get-HardDisk -VM $vm | Where-Object {
+    $_.ExtensionData.UnitNumber -eq [int]$targetId
+}
+
+if (-not $hardDisk) {
+    Write-Log "ERROR: Could not map D: to a VMDK"
+    exit
+}
+
+Write-Log "Mapped to VMware Disk: $($hardDisk.Name)"
+
+# =========================
+# EXPAND DISK
+# =========================
+$newSize = $hardDisk.CapacityGB + $increaseGB
+
+Set-HardDisk -HardDisk $hardDisk -CapacityGB $newSize -Confirm:$false | Out-Null
+Write-Log "Expanded disk from $($hardDisk.CapacityGB)GB to $newSize GB"
+
+# =========================
+# EXTEND D: DRIVE IN WINDOWS
+# =========================
+$extendScript = @'
+$drive = "D"
+$size = Get-PartitionSupportedSize -DriveLetter $drive
+Resize-Partition -DriveLetter $drive -Size $size.SizeMax
+Write-Output "D drive extended"
+'@
+
+Invoke-VMScript -VM $vm -ScriptText $extendScript -GuestUser "Administrator" -GuestPassword "PASSWORD" -ScriptType Powershell
+
+Write-Log "Extended D: drive inside guest OS"
+
+# =========================
+# COMPLETE
+# =========================
+Write-Log "===== Script Completed Successfully ====="
+Disconnect-VIServer -Confirm:$false
