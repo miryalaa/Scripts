@@ -11,24 +11,26 @@ const question = (query) => new Promise(resolve => rl.question(query, resolve));
 
 // ====================== CONFIG ======================
 const BASE_URL = 'https://your-bluecat-bam.example.com';   // ← CHANGE THIS
-const IGNORE_SSL_ERRORS = true;   // Set to false in production
+const IGNORE_SSL_ERRORS = true;   // Set false in production
 
 async function main() {
-    console.log("=== BlueCat Static IP + DNS Reservation (Pure Node.js) ===\n");
+    console.log("=== BlueCat Static IP + DNS Reservation ===\n");
 
     try {
-        const username = await question("Username: ");
-        const password = await question("Password: ");
-
-        const token = await login(username, password);
+        const token = await question("Enter your API Token (Bearer token): ");
+        
+        if (!token.trim()) {
+            console.error("Token is required!");
+            process.exit(1);
+        }
 
         const networkId = parseInt(await question("\nNetwork Collection ID: "));
         const ipAddress = await question("Static IP Address: ");
         const hostname = await question("Server Hostname: ");
-        const domain = await question("Domain (optional): ") || "";
+        const domain = await question("Domain (e.g. example.com, optional): ") || "";
         const comment = await question("Comment (optional): ") || "Reserved via API";
 
-        await reserveIPAndDNS(token, networkId, ipAddress, hostname, domain, comment);
+        await reserveIPAndDNS(token.trim(), networkId, ipAddress, hostname, domain, comment);
 
     } catch (error) {
         console.error("\n❌ Error:", error.message);
@@ -48,7 +50,7 @@ function makeRequest(options, body = null) {
                     if (res.statusCode >= 200 && res.statusCode < 300) {
                         resolve(parsed);
                     } else {
-                        reject(new Error(`HTTP ${res.statusCode}: ${data || 'No response'}`));
+                        reject(new Error(`HTTP ${res.statusCode}: ${data || 'No response body'}`));
                     }
                 } catch (e) {
                     resolve(data);
@@ -58,29 +60,9 @@ function makeRequest(options, body = null) {
 
         req.on('error', reject);
 
-        if (body) {
-            req.write(JSON.stringify(body));
-        }
+        if (body) req.write(JSON.stringify(body));
         req.end();
     });
-}
-
-async function login(username, password) {
-    const options = {
-        hostname: BASE_URL.replace(/^https?:\/\//, ''),
-        path: '/api/v2/sessions',
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        rejectUnauthorized: !IGNORE_SSL_ERRORS
-    };
-
-    console.log("🔑 Logging in...");
-    const data = await makeRequest(options, { username, password });
-    const token = data.apiToken || data.token;
-
-    if (!token) throw new Error("Failed to get API token");
-    console.log("✅ Login successful");
-    return token;
 }
 
 async function reserveIPAndDNS(token, networkId, ipAddress, hostname, domain, comment) {
@@ -97,14 +79,21 @@ async function reserveIPAndDNS(token, networkId, ipAddress, hostname, domain, co
 
     // 1. Reserve Static IP
     console.log(`\n📌 Reserving Static IP ${ipAddress}...`);
-    const ipOptions = { ...baseOptions, path: `/api/v2/networks/${networkId}/ipAddresses`, method: 'POST' };
+    const ipOptions = { 
+        ...baseOptions, 
+        path: `/api/v2/networks/${networkId}/ipAddresses`, 
+        method: 'POST' 
+    };
 
     try {
         await makeRequest(ipOptions, {
             address: ipAddress,
             name: hostname,
             type: "IP4Address",
-            properties: { state: "STATIC", comments: comment }
+            properties: { 
+                state: "STATIC", 
+                comments: comment 
+            }
         });
         console.log("✅ Static IP reserved successfully");
     } catch (err) {
@@ -114,7 +103,11 @@ async function reserveIPAndDNS(token, networkId, ipAddress, hostname, domain, co
 
     // 2. Create DNS Record
     console.log(`\n🌐 Creating DNS Host Record for ${hostname}...`);
-    const dnsOptions = { ...baseOptions, path: '/api/v2/resourceRecords', method: 'POST' };
+    const dnsOptions = { 
+        ...baseOptions, 
+        path: '/api/v2/resourceRecords', 
+        method: 'POST' 
+    };
 
     try {
         await makeRequest(dnsOptions, {
