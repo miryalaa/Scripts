@@ -1,4 +1,4 @@
-// bluecat-reserve-ip-dns.js
+// bluecat-reserve-ip-dns-fixed.js
 const https = require('https');
 const readline = require('readline');
 
@@ -9,34 +9,20 @@ const rl = readline.createInterface({
 
 const question = (query) => new Promise(resolve => rl.question(query, resolve));
 
-// ====================== CONFIG ======================
 const BASE_URL = 'https://your-bluecat-bam.example.com';   // ← CHANGE THIS
-const IGNORE_SSL_ERRORS = true;   // Set false in production
+const IGNORE_SSL_ERRORS = true;
 
 async function main() {
-    console.log("=== BlueCat Static IP + DNS Reservation ===\n");
+    console.log("=== BlueCat IP + DNS Reservation (Fixed) ===\n");
 
-    try {
-        const token = await question("Enter your API Token (Bearer token): ");
-        
-        if (!token.trim()) {
-            console.error("Token is required!");
-            process.exit(1);
-        }
+    const token = await question("Paste your fresh API Token: ");
+    const networkId = parseInt(await question("\nNetwork Collection ID: "));
+    const ipAddress = await question("Static IP Address: ");
+    const hostname = await question("Server Hostname: ");
+    const domain = await question("Domain (optional): ") || "";
+    const comment = await question("Comment (optional): ") || "Reserved via API";
 
-        const networkId = parseInt(await question("\nNetwork Collection ID: "));
-        const ipAddress = await question("Static IP Address: ");
-        const hostname = await question("Server Hostname: ");
-        const domain = await question("Domain (e.g. example.com, optional): ") || "";
-        const comment = await question("Comment (optional): ") || "Reserved via API";
-
-        await reserveIPAndDNS(token.trim(), networkId, ipAddress, hostname, domain, comment);
-
-    } catch (error) {
-        console.error("\n❌ Error:", error.message);
-    } finally {
-        rl.close();
-    }
+    await reserveIPAndDNS(token.trim(), networkId, ipAddress, hostname, domain, comment);
 }
 
 function makeRequest(options, body = null) {
@@ -45,13 +31,13 @@ function makeRequest(options, body = null) {
             let data = '';
             res.on('data', chunk => data += chunk);
             res.on('end', () => {
+                console.log(`Status: ${res.statusCode}`);
+                if (res.statusCode === 401) {
+                    console.log("401 Unauthorized - Check token format or permissions");
+                }
                 try {
-                    const parsed = data ? JSON.parse(data) : {};
-                    if (res.statusCode >= 200 && res.statusCode < 300) {
-                        resolve(parsed);
-                    } else {
-                        reject(new Error(`HTTP ${res.statusCode}: ${data || 'No response body'}`));
-                    }
+                    const json = JSON.parse(data);
+                    resolve(json);
                 } catch (e) {
                     resolve(data);
                 }
@@ -59,55 +45,44 @@ function makeRequest(options, body = null) {
         });
 
         req.on('error', reject);
-
         if (body) req.write(JSON.stringify(body));
         req.end();
     });
 }
 
 async function reserveIPAndDNS(token, networkId, ipAddress, hostname, domain, comment) {
-    const headers = {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json'
-    };
-
     const baseOptions = {
         hostname: BASE_URL.replace(/^https?:\/\//, ''),
-        headers,
+        headers: {
+            'Content-Type': 'application/json'
+        },
         rejectUnauthorized: !IGNORE_SSL_ERRORS
     };
 
-    // 1. Reserve Static IP
-    console.log(`\n📌 Reserving Static IP ${ipAddress}...`);
-    const ipOptions = { 
-        ...baseOptions, 
-        path: `/api/v2/networks/${networkId}/ipAddresses`, 
-        method: 'POST' 
-    };
+    // Try with Bearer prefix first (most common)
+    console.log("\nTrying with Bearer token...");
+    baseOptions.headers.Authorization = `Bearer ${token}`;
+
+    // Step 1: Reserve IP
+    const ipOptions = { ...baseOptions, path: `/api/v2/networks/${networkId}/ipAddresses`, method: 'POST' };
 
     try {
+        console.log("Reserving IP...");
         await makeRequest(ipOptions, {
             address: ipAddress,
             name: hostname,
             type: "IP4Address",
-            properties: { 
-                state: "STATIC", 
-                comments: comment 
-            }
+            properties: { state: "STATIC", comments: comment }
         });
-        console.log("✅ Static IP reserved successfully");
-    } catch (err) {
-        console.error("❌ IP Reservation failed:", err.message);
+        console.log("✅ IP Reserved Successfully");
+    } catch (e) {
+        console.error("IP failed:", e.message);
         return;
     }
 
-    // 2. Create DNS Record
-    console.log(`\n🌐 Creating DNS Host Record for ${hostname}...`);
-    const dnsOptions = { 
-        ...baseOptions, 
-        path: '/api/v2/resourceRecords', 
-        method: 'POST' 
-    };
+    // Step 2: DNS
+    console.log("\nCreating DNS record...");
+    const dnsOptions = { ...baseOptions, path: '/api/v2/resourceRecords', method: 'POST' };
 
     try {
         await makeRequest(dnsOptions, {
@@ -116,18 +91,13 @@ async function reserveIPAndDNS(token, networkId, ipAddress, hostname, domain, co
             properties: {
                 absoluteName: domain ? `${hostname}.${domain}`.replace(/\.+$/, '') : hostname,
                 addresses: [ipAddress],
-                reverseRecord: true,
-                ttl: 3600,
-                comments: comment
+                reverseRecord: true
             }
         });
-        console.log("✅ DNS Host Record created successfully");
-    } catch (err) {
-        console.error("❌ DNS creation failed:", err.message);
+        console.log("✅ DNS Record Created");
+    } catch (e) {
+        console.error("DNS failed:", e.message);
     }
-
-    console.log("\n🎉 Operation completed!");
 }
 
-// Run
 main();
