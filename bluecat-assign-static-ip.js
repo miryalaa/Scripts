@@ -1,7 +1,6 @@
-// bluecat-assign-static-ip.js
-const axios = require('axios');
-const readline = require('readline');
+// bluecat-reserve-ip-dns.js
 const https = require('https');
+const readline = require('readline');
 
 const rl = readline.createInterface({
     input: process.stdin,
@@ -12,113 +11,129 @@ const question = (query) => new Promise(resolve => rl.question(query, resolve));
 
 // ====================== CONFIG ======================
 const BASE_URL = 'https://your-bluecat-bam.example.com';   // ← CHANGE THIS
-
-const httpsAgent = new https.Agent({ rejectUnauthorized: false });
+const IGNORE_SSL_ERRORS = true;   // Set to false in production
 
 async function main() {
-    try {
-        const username = await question('Enter username: ');
-        const password = await question('Enter password: ');
+    console.log("=== BlueCat Static IP + DNS Reservation (Pure Node.js) ===\n");
 
-        console.log('\n🔑 Logging in...');
+    try {
+        const username = await question("Username: ");
+        const password = await question("Password: ");
+
         const token = await login(username, password);
 
-        // === USER INPUTS ===
-        const networkId = parseInt(await question('Enter Network Collection ID: '));
-        const ipAddress = await question('Enter Static IP Address: ');
-        const hostname = await question('Enter Hostname: ');
-        const domain = await question('Enter Domain (optional): ') || '';
-        const comment = await question('Enter Comment (optional): ') || 'Assigned via API';
+        const networkId = parseInt(await question("\nNetwork Collection ID: "));
+        const ipAddress = await question("Static IP Address: ");
+        const hostname = await question("Server Hostname: ");
+        const domain = await question("Domain (optional): ") || "";
+        const comment = await question("Comment (optional): ") || "Reserved via API";
 
-        // Assign IP and create DNS only on success
-        const ipSuccess = await assignStaticIP(token, networkId, ipAddress, hostname, comment);
+        await reserveIPAndDNS(token, networkId, ipAddress, hostname, domain, comment);
 
-        if (ipSuccess) {
-            await createDNSRecord(token, hostname, domain, ipAddress, comment);
-        } else {
-            console.log('\n⚠️ Skipping DNS creation due to IP assignment failure.');
-        }
-
-    } catch (err) {
-        console.error('❌ Error:', err.message);
+    } catch (error) {
+        console.error("\n❌ Error:", error.message);
     } finally {
         rl.close();
     }
 }
 
-async function login(username, password) {
-    const url = `${BASE_URL}/api/v2/sessions`;
-    const res = await axios.post(url, { username, password }, { httpsAgent });
-    
-    const token = res.data.apiToken || res.data.token;
-    if (!token) throw new Error('No token received');
+function makeRequest(options, body = null) {
+    return new Promise((resolve, reject) => {
+        const req = https.request(options, (res) => {
+            let data = '';
+            res.on('data', chunk => data += chunk);
+            res.on('end', () => {
+                try {
+                    const parsed = data ? JSON.parse(data) : {};
+                    if (res.statusCode >= 200 && res.statusCode < 300) {
+                        resolve(parsed);
+                    } else {
+                        reject(new Error(`HTTP ${res.statusCode}: ${data || 'No response'}`));
+                    }
+                } catch (e) {
+                    resolve(data);
+                }
+            });
+        });
 
-    console.log('✅ Login successful');
+        req.on('error', reject);
+
+        if (body) {
+            req.write(JSON.stringify(body));
+        }
+        req.end();
+    });
+}
+
+async function login(username, password) {
+    const options = {
+        hostname: BASE_URL.replace(/^https?:\/\//, ''),
+        path: '/api/v2/sessions',
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        rejectUnauthorized: !IGNORE_SSL_ERRORS
+    };
+
+    console.log("🔑 Logging in...");
+    const data = await makeRequest(options, { username, password });
+    const token = data.apiToken || data.token;
+
+    if (!token) throw new Error("Failed to get API token");
+    console.log("✅ Login successful");
     return token;
 }
 
-async function assignStaticIP(token, networkId, ipAddress, hostname, comment) {
+async function reserveIPAndDNS(token, networkId, ipAddress, hostname, domain, comment) {
     const headers = {
-        Authorization: `Bearer ${token}`,
+        'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json'
     };
 
-    console.log(`\n📌 Assigning Static IP ${ipAddress} ...`);
-
-    const ipPayload = {
-        address: ipAddress,
-        name: hostname,
-        type: "IP4Address",
-        properties: {
-            state: "STATIC",
-            comments: comment
-        }
+    const baseOptions = {
+        hostname: BASE_URL.replace(/^https?:\/\//, ''),
+        headers,
+        rejectUnauthorized: !IGNORE_SSL_ERRORS
     };
 
-    const ipUrl = `${BASE_URL}/api/v2/networks/${networkId}/ipAddresses`;
+    // 1. Reserve Static IP
+    console.log(`\n📌 Reserving Static IP ${ipAddress}...`);
+    const ipOptions = { ...baseOptions, path: `/api/v2/networks/${networkId}/ipAddresses`, method: 'POST' };
 
     try {
-        await axios.post(ipUrl, ipPayload, { headers, httpsAgent });
-        console.log('✅ Static IP assigned successfully');
-        return true;
+        await makeRequest(ipOptions, {
+            address: ipAddress,
+            name: hostname,
+            type: "IP4Address",
+            properties: { state: "STATIC", comments: comment }
+        });
+        console.log("✅ Static IP reserved successfully");
     } catch (err) {
-        console.error('❌ Failed to assign IP:', err.response?.status || err.message);
-        if (err.response?.data) console.dir(err.response.data, { depth: 1 });
-        return false;
+        console.error("❌ IP Reservation failed:", err.message);
+        return;
     }
-}
 
-async function createDNSRecord(token, hostname, domain, ipAddress, comment) {
-    const headers = {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json'
-    };
-
+    // 2. Create DNS Record
     console.log(`\n🌐 Creating DNS Host Record for ${hostname}...`);
-
-    const dnsPayload = {
-        type: "HostRecord",
-        name: hostname,
-        properties: {
-            absoluteName: domain ? `${hostname}.${domain}`.replace(/\.+$/, '') : hostname,
-            addresses: [ipAddress],
-            reverseRecord: true,
-            ttl: 3600,
-            comments: comment
-        }
-    };
-
-    const dnsUrl = `${BASE_URL}/api/v2/resourceRecords`;
+    const dnsOptions = { ...baseOptions, path: '/api/v2/resourceRecords', method: 'POST' };
 
     try {
-        await axios.post(dnsUrl, dnsPayload, { headers, httpsAgent });
-        console.log('✅ DNS Record created successfully');
-        return true;
+        await makeRequest(dnsOptions, {
+            type: "HostRecord",
+            name: hostname,
+            properties: {
+                absoluteName: domain ? `${hostname}.${domain}`.replace(/\.+$/, '') : hostname,
+                addresses: [ipAddress],
+                reverseRecord: true,
+                ttl: 3600,
+                comments: comment
+            }
+        });
+        console.log("✅ DNS Host Record created successfully");
     } catch (err) {
-        console.error('❌ Failed to create DNS record:', err.response?.status || err.message);
-        if (err.response?.data) console.dir(err.response.data);
-        return false;
+        console.error("❌ DNS creation failed:", err.message);
     }
+
+    console.log("\n🎉 Operation completed!");
 }
 
 // Run
